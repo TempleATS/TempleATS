@@ -9,6 +9,7 @@ import ReqDetail from './pages/ReqDetail'
 import Jobs from './pages/Jobs'
 import JobForm from './pages/JobForm'
 import JobDetail from './pages/JobDetail'
+import JobPipeline from './pages/JobPipeline'
 import CareersPage from './pages/careers/CareersPage'
 import CareerJobDetail from './pages/careers/CareerJobDetail'
 import ApplyForm from './pages/careers/ApplyForm'
@@ -51,6 +52,7 @@ function AppRoutes() {
       <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
       <Route path="/jobs/new" element={<ProtectedRoute><JobForm /></ProtectedRoute>} />
       <Route path="/jobs/:jobId" element={<ProtectedRoute><JobDetail /></ProtectedRoute>} />
+      <Route path="/jobs/:jobId/pipeline" element={<ProtectedRoute><JobPipeline /></ProtectedRoute>} />
 
       {/* Public careers routes (no auth) */}
       <Route path="/careers/:orgSlug" element={<CareersPage />} />

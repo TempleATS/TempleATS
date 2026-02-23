@@ -89,6 +89,51 @@ export interface ApplyResponse {
   message: string;
 }
 
+export interface PipelineApplication {
+  id: string;
+  stage: string;
+  rejection_reason: { String: string; Valid: boolean } | null;
+  rejection_notes: { String: string; Valid: boolean } | null;
+  candidate_id: string;
+  job_id: string;
+  created_at: { Time: string; Valid: boolean };
+  updated_at: { Time: string; Valid: boolean };
+  candidate_name: string;
+  candidate_email: string;
+  candidate_resume_url: { String: string; Valid: boolean } | null;
+}
+
+export interface PipelineData {
+  job: Job;
+  stages: Record<string, PipelineApplication[]>;
+}
+
+export interface ApplicationDetail {
+  application: {
+    id: string;
+    stage: string;
+    rejection_reason: { String: string; Valid: boolean } | null;
+    rejection_notes: { String: string; Valid: boolean } | null;
+    candidate_id: string;
+    job_id: string;
+    created_at: { Time: string; Valid: boolean };
+    updated_at: { Time: string; Valid: boolean };
+    candidate_name: string;
+    candidate_email: string;
+    candidate_phone: { String: string; Valid: boolean } | null;
+    candidate_resume_url: { String: string; Valid: boolean } | null;
+    job_title: string;
+  };
+  transitions: {
+    id: string;
+    application_id: string;
+    from_stage: { String: string; Valid: boolean } | null;
+    to_stage: string;
+    moved_by_name: { String: string; Valid: boolean } | null;
+    created_at: { Time: string; Valid: boolean };
+  }[];
+}
+
 export const api = {
   auth: {
     signup: (data: { email: string; name: string; password: string; orgName: string; orgSlug: string }) =>
@@ -117,6 +162,12 @@ export const api = {
     get: (id: string) => request<Job>(`/jobs/${id}`),
     update: (id: string, data: { title: string; description: string; location?: string; department?: string; salary?: string; status: string; requisitionId?: string }) =>
       request<Job>(`/jobs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    pipeline: (id: string) => request<PipelineData>(`/jobs/${id}/pipeline`),
+  },
+  applications: {
+    get: (id: string) => request<ApplicationDetail>(`/applications/${id}`),
+    updateStage: (id: string, data: { stage: string; rejectionReason?: string; rejectionNotes?: string }) =>
+      request<PipelineApplication>(`/applications/${id}/stage`, { method: 'PUT', body: JSON.stringify(data) }),
   },
   careers: {
     listJobs: (orgSlug: string) =>
