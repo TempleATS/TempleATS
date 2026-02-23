@@ -3,6 +3,12 @@ import { AuthContext, useAuth, useAuthProvider } from './hooks/use-auth'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
+import Reqs from './pages/Reqs'
+import ReqForm from './pages/ReqForm'
+import ReqDetail from './pages/ReqDetail'
+import Jobs from './pages/Jobs'
+import JobForm from './pages/JobForm'
+import JobDetail from './pages/JobDetail'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -33,9 +39,16 @@ function AppRoutes() {
       <Route path="/signup" element={
         !loading && user ? <Navigate to="/dashboard" replace /> : <Signup />
       } />
-      <Route path="/dashboard" element={
-        <ProtectedRoute><Dashboard /></ProtectedRoute>
-      } />
+
+      {/* Protected routes */}
+      <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+      <Route path="/reqs" element={<ProtectedRoute><Reqs /></ProtectedRoute>} />
+      <Route path="/reqs/new" element={<ProtectedRoute><ReqForm /></ProtectedRoute>} />
+      <Route path="/reqs/:reqId" element={<ProtectedRoute><ReqDetail /></ProtectedRoute>} />
+      <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
+      <Route path="/jobs/new" element={<ProtectedRoute><JobForm /></ProtectedRoute>} />
+      <Route path="/jobs/:jobId" element={<ProtectedRoute><JobDetail /></ProtectedRoute>} />
+
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );

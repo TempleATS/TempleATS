@@ -1,51 +1,37 @@
-import { useAuth } from '../hooks/use-auth';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { api, type Requisition, type Job } from '../api/client';
+import DashboardLayout from '../components/layout/DashboardLayout';
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  const [reqs, setReqs] = useState<Requisition[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login');
-  };
+  useEffect(() => {
+    api.reqs.list().then(setReqs);
+    api.jobs.list().then(setJobs);
+  }, []);
+
+  const openJobs = jobs.filter(j => j.status === 'open').length;
+  const activeReqs = reqs.filter(r => r.status === 'open').length;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-gray-900">TempleATS</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-gray-600">
-              {user?.name} ({user?.orgName})
-            </span>
-            <button
-              onClick={handleLogout}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              Logout
-            </button>
-          </div>
+    <DashboardLayout>
+      <h2 className="text-2xl font-semibold text-gray-900 mb-6">Dashboard</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <Link to="/jobs" className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+          <p className="text-sm text-gray-500">Open Jobs</p>
+          <p className="text-3xl font-bold text-gray-900 mt-1">{openJobs}</p>
+        </Link>
+        <Link to="/reqs" className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+          <p className="text-sm text-gray-500">Active Requisitions</p>
+          <p className="text-3xl font-bold text-gray-900 mt-1">{activeReqs}</p>
+        </Link>
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <p className="text-sm text-gray-500">Total Candidates</p>
+          <p className="text-3xl font-bold text-gray-900 mt-1">0</p>
         </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        <h2 className="text-2xl font-semibold text-gray-900 mb-6">Dashboard</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <p className="text-sm text-gray-500">Open Jobs</p>
-            <p className="text-3xl font-bold text-gray-900 mt-1">0</p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <p className="text-sm text-gray-500">Active Requisitions</p>
-            <p className="text-3xl font-bold text-gray-900 mt-1">0</p>
-          </div>
-          <div className="bg-white p-6 rounded-lg shadow-sm border">
-            <p className="text-sm text-gray-500">Total Candidates</p>
-            <p className="text-3xl font-bold text-gray-900 mt-1">0</p>
-          </div>
-        </div>
-      </main>
-    </div>
+      </div>
+    </DashboardLayout>
   );
 }

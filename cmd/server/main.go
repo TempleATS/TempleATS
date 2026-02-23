@@ -72,6 +72,19 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(mw.RequireAuth)
 		r.Get("/api/auth/me", srv.Me)
+
+		// Requisitions
+		r.Get("/api/reqs", srv.ListRequisitions)
+		r.Post("/api/reqs", srv.CreateRequisition)
+		r.Get("/api/reqs/{reqId}", srv.GetRequisition)
+		r.Put("/api/reqs/{reqId}", srv.UpdateRequisition)
+		r.Post("/api/reqs/{reqId}/jobs", srv.AttachJobToRequisition)
+
+		// Jobs
+		r.Get("/api/jobs", srv.ListJobs)
+		r.Post("/api/jobs", srv.CreateJob)
+		r.Get("/api/jobs/{jobId}", srv.GetJob)
+		r.Put("/api/jobs/{jobId}", srv.UpdateJob)
 	})
 
 	// Serve React SPA for non-API routes

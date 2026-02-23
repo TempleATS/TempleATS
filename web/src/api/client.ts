@@ -36,6 +36,35 @@ export interface User {
   orgName: string;
 }
 
+export interface Requisition {
+  id: string;
+  title: string;
+  level: string | null;
+  department: string | null;
+  target_hires: number;
+  status: string;
+  hiring_manager_id: string | null;
+  organization_id: string;
+  opened_at: string;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Job {
+  id: string;
+  title: string;
+  description: string;
+  location: string | null;
+  department: string | null;
+  salary: string | null;
+  status: string;
+  requisition_id: string | null;
+  organization_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export const api = {
   auth: {
     signup: (data: { email: string; name: string; password: string; orgName: string; orgSlug: string }) =>
@@ -46,5 +75,23 @@ export const api = {
       request<{ status: string }>('/auth/logout', { method: 'POST' }),
     me: () =>
       request<User>('/auth/me'),
+  },
+  reqs: {
+    list: () => request<Requisition[]>('/reqs'),
+    create: (data: { title: string; level?: string; department?: string; targetHires?: number }) =>
+      request<Requisition>('/reqs', { method: 'POST', body: JSON.stringify(data) }),
+    get: (id: string) => request<{ requisition: Requisition; jobs: Job[] }>(`/reqs/${id}`),
+    update: (id: string, data: { title: string; level?: string; department?: string; targetHires?: number; status: string }) =>
+      request<Requisition>(`/reqs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    attachJob: (reqId: string, jobId: string) =>
+      request<Job>(`/reqs/${reqId}/jobs`, { method: 'POST', body: JSON.stringify({ jobId }) }),
+  },
+  jobs: {
+    list: () => request<Job[]>('/jobs'),
+    create: (data: { title: string; description: string; location?: string; department?: string; salary?: string; status?: string; requisitionId?: string }) =>
+      request<Job>('/jobs', { method: 'POST', body: JSON.stringify(data) }),
+    get: (id: string) => request<Job>(`/jobs/${id}`),
+    update: (id: string, data: { title: string; description: string; location?: string; department?: string; salary?: string; status: string; requisitionId?: string }) =>
+      request<Job>(`/jobs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   },
 };
