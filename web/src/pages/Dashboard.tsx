@@ -1,15 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type Requisition, type Job } from '../api/client';
+import { api, type Requisition, type Job, type Candidate } from '../api/client';
 import DashboardLayout from '../components/layout/DashboardLayout';
 
 export default function Dashboard() {
   const [reqs, setReqs] = useState<Requisition[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
 
   useEffect(() => {
     api.reqs.list().then(setReqs);
     api.jobs.list().then(setJobs);
+    api.candidates.list().then(setCandidates);
   }, []);
 
   const openJobs = jobs.filter(j => j.status === 'open').length;
@@ -27,10 +29,10 @@ export default function Dashboard() {
           <p className="text-sm text-gray-500">Active Requisitions</p>
           <p className="text-3xl font-bold text-gray-900 mt-1">{activeReqs}</p>
         </Link>
-        <div className="bg-white p-6 rounded-lg shadow-sm border">
+        <Link to="/candidates" className="bg-white p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
           <p className="text-sm text-gray-500">Total Candidates</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1">0</p>
-        </div>
+          <p className="text-3xl font-bold text-gray-900 mt-1">{candidates.length}</p>
+        </Link>
       </div>
     </DashboardLayout>
   );
