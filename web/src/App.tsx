@@ -13,6 +13,7 @@ import JobPipeline from './pages/JobPipeline'
 import Candidates from './pages/Candidates'
 import CandidateDetail from './pages/CandidateDetail'
 import ApplicationDetailPage from './pages/ApplicationDetail'
+import ReqReport from './pages/ReqReport'
 import CareersPage from './pages/careers/CareersPage'
 import CareerJobDetail from './pages/careers/CareerJobDetail'
 import ApplyForm from './pages/careers/ApplyForm'
@@ -52,6 +53,7 @@ function AppRoutes() {
       <Route path="/reqs" element={<ProtectedRoute><Reqs /></ProtectedRoute>} />
       <Route path="/reqs/new" element={<ProtectedRoute><ReqForm /></ProtectedRoute>} />
       <Route path="/reqs/:reqId" element={<ProtectedRoute><ReqDetail /></ProtectedRoute>} />
+      <Route path="/reqs/:reqId/report" element={<ProtectedRoute><ReqReport /></ProtectedRoute>} />
       <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
       <Route path="/jobs/new" element={<ProtectedRoute><JobForm /></ProtectedRoute>} />
       <Route path="/jobs/:jobId" element={<ProtectedRoute><JobDetail /></ProtectedRoute>} />

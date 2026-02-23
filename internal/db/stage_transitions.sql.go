@@ -11,6 +11,43 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const avgTimeInStageByRequisition = `-- name: AvgTimeInStageByRequisition :many
+SELECT st.from_stage AS stage,
+       AVG(EXTRACT(EPOCH FROM (st.created_at - prev.created_at)) / 86400)::float AS avg_days
+FROM stage_transitions st
+JOIN applications a ON st.application_id = a.id
+JOIN jobs j ON a.job_id = j.id
+JOIN stage_transitions prev ON prev.application_id = st.application_id
+  AND prev.to_stage = st.from_stage
+WHERE j.requisition_id = $1 AND st.from_stage IS NOT NULL
+GROUP BY st.from_stage
+`
+
+type AvgTimeInStageByRequisitionRow struct {
+	Stage   pgtype.Text `json:"stage"`
+	AvgDays float64     `json:"avg_days"`
+}
+
+func (q *Queries) AvgTimeInStageByRequisition(ctx context.Context, requisitionID pgtype.Text) ([]AvgTimeInStageByRequisitionRow, error) {
+	rows, err := q.db.Query(ctx, avgTimeInStageByRequisition, requisitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []AvgTimeInStageByRequisitionRow{}
+	for rows.Next() {
+		var i AvgTimeInStageByRequisitionRow
+		if err := rows.Scan(&i.Stage, &i.AvgDays); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const createStageTransition = `-- name: CreateStageTransition :one
 INSERT INTO stage_transitions (application_id, from_stage, to_stage, moved_by_id)
 VALUES ($1, $2, $3, $4)

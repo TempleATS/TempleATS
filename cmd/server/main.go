@@ -84,6 +84,7 @@ func main() {
 		r.Get("/api/reqs/{reqId}", srv.GetRequisition)
 		r.Put("/api/reqs/{reqId}", srv.UpdateRequisition)
 		r.Post("/api/reqs/{reqId}/jobs", srv.AttachJobToRequisition)
+		r.Get("/api/reqs/{reqId}/report", srv.ReqReport)
 
 		// Jobs
 		r.Get("/api/jobs", srv.ListJobs)

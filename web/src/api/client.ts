@@ -172,6 +172,20 @@ export interface ApplicationDetail {
   notes: Note[];
 }
 
+export interface ReqReport {
+  requisition: Requisition;
+  funnel: Record<string, number>;
+  timeToHire: {
+    avgDaysInStage: Record<string, number>;
+  };
+  rejections: {
+    total: number;
+    byReason: Record<string, number>;
+  };
+  byJob: { job_id: string; job_title: string; total: number; hired: number; rejected: number }[];
+  fillProgress: { hired: number; target: number };
+}
+
 export const api = {
   auth: {
     signup: (data: { email: string; name: string; password: string; orgName: string; orgSlug: string }) =>
@@ -192,6 +206,7 @@ export const api = {
       request<Requisition>(`/reqs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     attachJob: (reqId: string, jobId: string) =>
       request<Job>(`/reqs/${reqId}/jobs`, { method: 'POST', body: JSON.stringify({ jobId }) }),
+    report: (id: string) => request<ReqReport>(`/reqs/${id}/report`),
   },
   jobs: {
     list: () => request<Job[]>('/jobs'),

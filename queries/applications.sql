@@ -43,3 +43,27 @@ SELECT stage, COUNT(*)::int AS count
 FROM applications
 WHERE job_id = $1
 GROUP BY stage;
+
+-- name: FunnelByRequisition :many
+SELECT a.stage, COUNT(*)::int AS count
+FROM applications a
+JOIN jobs j ON a.job_id = j.id
+WHERE j.requisition_id = $1
+GROUP BY a.stage;
+
+-- name: RejectionsByRequisition :many
+SELECT a.rejection_reason, COUNT(*)::int AS count
+FROM applications a
+JOIN jobs j ON a.job_id = j.id
+WHERE j.requisition_id = $1 AND a.stage = 'rejected' AND a.rejection_reason IS NOT NULL
+GROUP BY a.rejection_reason;
+
+-- name: ByJobBreakdown :many
+SELECT j.id AS job_id, j.title AS job_title,
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE a.stage = 'hired')::int AS hired,
+       COUNT(*) FILTER (WHERE a.stage = 'rejected')::int AS rejected
+FROM applications a
+JOIN jobs j ON a.job_id = j.id
+WHERE j.requisition_id = $1
+GROUP BY j.id, j.title;

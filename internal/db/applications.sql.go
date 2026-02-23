@@ -11,6 +11,51 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const byJobBreakdown = `-- name: ByJobBreakdown :many
+SELECT j.id AS job_id, j.title AS job_title,
+       COUNT(*)::int AS total,
+       COUNT(*) FILTER (WHERE a.stage = 'hired')::int AS hired,
+       COUNT(*) FILTER (WHERE a.stage = 'rejected')::int AS rejected
+FROM applications a
+JOIN jobs j ON a.job_id = j.id
+WHERE j.requisition_id = $1
+GROUP BY j.id, j.title
+`
+
+type ByJobBreakdownRow struct {
+	JobID    string `json:"job_id"`
+	JobTitle string `json:"job_title"`
+	Total    int32  `json:"total"`
+	Hired    int32  `json:"hired"`
+	Rejected int32  `json:"rejected"`
+}
+
+func (q *Queries) ByJobBreakdown(ctx context.Context, requisitionID pgtype.Text) ([]ByJobBreakdownRow, error) {
+	rows, err := q.db.Query(ctx, byJobBreakdown, requisitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ByJobBreakdownRow{}
+	for rows.Next() {
+		var i ByJobBreakdownRow
+		if err := rows.Scan(
+			&i.JobID,
+			&i.JobTitle,
+			&i.Total,
+			&i.Hired,
+			&i.Rejected,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countApplicationsByJobAndStage = `-- name: CountApplicationsByJobAndStage :many
 SELECT stage, COUNT(*)::int AS count
 FROM applications
@@ -68,6 +113,39 @@ func (q *Queries) CreateApplication(ctx context.Context, arg CreateApplicationPa
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const funnelByRequisition = `-- name: FunnelByRequisition :many
+SELECT a.stage, COUNT(*)::int AS count
+FROM applications a
+JOIN jobs j ON a.job_id = j.id
+WHERE j.requisition_id = $1
+GROUP BY a.stage
+`
+
+type FunnelByRequisitionRow struct {
+	Stage string `json:"stage"`
+	Count int32  `json:"count"`
+}
+
+func (q *Queries) FunnelByRequisition(ctx context.Context, requisitionID pgtype.Text) ([]FunnelByRequisitionRow, error) {
+	rows, err := q.db.Query(ctx, funnelByRequisition, requisitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FunnelByRequisitionRow{}
+	for rows.Next() {
+		var i FunnelByRequisitionRow
+		if err := rows.Scan(&i.Stage, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getApplicationByID = `-- name: GetApplicationByID :one
@@ -236,6 +314,39 @@ func (q *Queries) ListApplicationsByJob(ctx context.Context, jobID string) ([]Li
 			&i.CandidateEmail,
 			&i.CandidateResumeUrl,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rejectionsByRequisition = `-- name: RejectionsByRequisition :many
+SELECT a.rejection_reason, COUNT(*)::int AS count
+FROM applications a
+JOIN jobs j ON a.job_id = j.id
+WHERE j.requisition_id = $1 AND a.stage = 'rejected' AND a.rejection_reason IS NOT NULL
+GROUP BY a.rejection_reason
+`
+
+type RejectionsByRequisitionRow struct {
+	RejectionReason pgtype.Text `json:"rejection_reason"`
+	Count           int32       `json:"count"`
+}
+
+func (q *Queries) RejectionsByRequisition(ctx context.Context, requisitionID pgtype.Text) ([]RejectionsByRequisitionRow, error) {
+	rows, err := q.db.Query(ctx, rejectionsByRequisition, requisitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RejectionsByRequisitionRow{}
+	for rows.Next() {
+		var i RejectionsByRequisitionRow
+		if err := rows.Scan(&i.RejectionReason, &i.Count); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
