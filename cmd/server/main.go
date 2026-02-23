@@ -95,6 +95,11 @@ func main() {
 		// Applications
 		r.Get("/api/applications/{appId}", srv.GetApplication)
 		r.Put("/api/applications/{appId}/stage", srv.UpdateStage)
+		r.Post("/api/applications/{appId}/notes", srv.AddNote)
+
+		// Candidates
+		r.Get("/api/candidates", srv.ListCandidates)
+		r.Get("/api/candidates/{candidateId}", srv.GetCandidate)
 	})
 
 	// Serve React SPA for non-API routes

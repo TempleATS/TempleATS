@@ -174,8 +174,15 @@ func (s *Server) GetApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	notes, err := s.Queries.ListNotesByApplication(ctx, appID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list notes"})
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"application": app,
 		"transitions": transitions,
+		"notes":       notes,
 	})
 }

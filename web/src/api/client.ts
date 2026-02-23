@@ -108,6 +108,43 @@ export interface PipelineData {
   stages: Record<string, PipelineApplication[]>;
 }
 
+export type PgText = { String: string; Valid: boolean } | null;
+export type PgTimestamp = { Time: string; Valid: boolean };
+
+export interface Candidate {
+  id: string;
+  name: string;
+  email: string;
+  phone: PgText;
+  resume_url: PgText;
+  resume_filename: PgText;
+  organization_id: string;
+  created_at: PgTimestamp;
+  updated_at: PgTimestamp;
+}
+
+export interface CandidateApplication {
+  id: string;
+  stage: string;
+  rejection_reason: PgText;
+  rejection_notes: PgText;
+  candidate_id: string;
+  job_id: string;
+  created_at: PgTimestamp;
+  updated_at: PgTimestamp;
+  job_title: string;
+  job_status: string;
+}
+
+export interface Note {
+  id: string;
+  content: string;
+  application_id: string;
+  author_id: string;
+  author_name?: string;
+  created_at: PgTimestamp;
+}
+
 export interface ApplicationDetail {
   application: {
     id: string;
@@ -132,6 +169,7 @@ export interface ApplicationDetail {
     moved_by_name: { String: string; Valid: boolean } | null;
     created_at: { Time: string; Valid: boolean };
   }[];
+  notes: Note[];
 }
 
 export const api = {
@@ -168,6 +206,12 @@ export const api = {
     get: (id: string) => request<ApplicationDetail>(`/applications/${id}`),
     updateStage: (id: string, data: { stage: string; rejectionReason?: string; rejectionNotes?: string }) =>
       request<PipelineApplication>(`/applications/${id}/stage`, { method: 'PUT', body: JSON.stringify(data) }),
+    addNote: (id: string, content: string) =>
+      request<Note>(`/applications/${id}/notes`, { method: 'POST', body: JSON.stringify({ content }) }),
+  },
+  candidates: {
+    list: (q?: string) => request<Candidate[]>(`/candidates${q ? `?q=${encodeURIComponent(q)}` : ''}`),
+    get: (id: string) => request<{ candidate: Candidate; applications: CandidateApplication[] }>(`/candidates/${id}`),
   },
   careers: {
     listJobs: (orgSlug: string) =>
