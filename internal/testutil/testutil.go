@@ -2,16 +2,16 @@ package testutil
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/temple-ats/TempleATS/internal/db"
 )
+
+var testCounter atomic.Int64
 
 // TestDB holds a test database connection and its cleanup function.
 type TestDB struct {
@@ -20,61 +20,55 @@ type TestDB struct {
 	Cleanup func()
 }
 
-// SetupTestDB creates a PostgreSQL container and returns a connected pool.
-// It applies the migration schema automatically.
+// SetupTestDB connects to the test database and creates a fresh schema.
+// Uses TEST_DATABASE_URL env var. If not set, the test is skipped.
+// Each test gets an isolated schema to avoid interference between tests.
 func SetupTestDB(t *testing.T) *TestDB {
 	t.Helper()
 
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set, skipping integration test")
+	}
+
 	ctx := context.Background()
 
-	// Read migration file
-	migration, err := os.ReadFile("../../migrations/001_init.sql")
-	if err != nil {
-		// Try alternate path (tests may run from different directories)
-		migration, err = os.ReadFile("../../../migrations/001_init.sql")
-		if err != nil {
-			t.Fatalf("failed to read migration file: %v", err)
-		}
-	}
-
-	pgContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("temple_ats_test"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		postgres.WithInitScripts(), // no init scripts, we'll run migration manually
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second),
-		),
-	)
-	if err != nil {
-		t.Fatalf("failed to start postgres container: %v", err)
-	}
-
-	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("failed to get connection string: %v", err)
-	}
-
-	pool, err := pgxpool.New(ctx, connStr)
+	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		t.Fatalf("failed to connect to test database: %v", err)
 	}
 
-	// Apply migration
+	// Create a unique schema for this test to ensure isolation
+	schemaName := fmt.Sprintf("test_%d_%d", os.Getpid(), testCounter.Add(1))
+
+	if _, err := pool.Exec(ctx, fmt.Sprintf("CREATE SCHEMA %s", schemaName)); err != nil {
+		pool.Close()
+		t.Fatalf("failed to create test schema: %v", err)
+	}
+
+	// Set search_path so all tables are created/queried in this schema
+	if _, err := pool.Exec(ctx, fmt.Sprintf("SET search_path TO %s", schemaName)); err != nil {
+		pool.Close()
+		t.Fatalf("failed to set search_path: %v", err)
+	}
+
+	// Read and apply migration
+	migration, err := findMigration()
+	if err != nil {
+		pool.Close()
+		t.Fatalf("failed to read migration file: %v", err)
+	}
+
 	if _, err := pool.Exec(ctx, string(migration)); err != nil {
+		pool.Close()
 		t.Fatalf("failed to apply migration: %v", err)
 	}
 
 	queries := db.New(pool)
 
 	cleanup := func() {
+		pool.Exec(context.Background(), fmt.Sprintf("DROP SCHEMA IF EXISTS %s CASCADE", schemaName))
 		pool.Close()
-		if err := pgContainer.Terminate(ctx); err != nil {
-			t.Logf("failed to terminate postgres container: %v", err)
-		}
 	}
 
 	return &TestDB{
@@ -82,6 +76,21 @@ func SetupTestDB(t *testing.T) *TestDB {
 		Queries: queries,
 		Cleanup: cleanup,
 	}
+}
+
+func findMigration() ([]byte, error) {
+	paths := []string{
+		"../../migrations/001_init.sql",
+		"../../../migrations/001_init.sql",
+		"migrations/001_init.sql",
+	}
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err == nil {
+			return data, nil
+		}
+	}
+	return nil, fmt.Errorf("migration file not found in any expected path")
 }
 
 // CreateTestOrg creates an organization for testing and returns it.

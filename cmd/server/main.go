@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/temple-ats/TempleATS/internal/handler"
+	mw "github.com/temple-ats/TempleATS/internal/middleware"
 )
 
 //go:embed static
@@ -61,6 +62,17 @@ func main() {
 
 	// Health check
 	r.Get("/api/health", srv.Health)
+
+	// Auth routes (public)
+	r.Post("/api/auth/signup", srv.Signup)
+	r.Post("/api/auth/login", srv.Login)
+	r.Post("/api/auth/logout", srv.Logout)
+
+	// Protected routes
+	r.Group(func(r chi.Router) {
+		r.Use(mw.RequireAuth)
+		r.Get("/api/auth/me", srv.Me)
+	})
 
 	// Serve React SPA for non-API routes
 	staticFS, err := fs.Sub(staticFiles, "static")
