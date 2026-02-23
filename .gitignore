@@ -1,0 +1,26 @@
+# Go
+bin/
+*.exe
+
+# React
+web/node_modules/
+web/dist/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+*.test
+coverage.out
