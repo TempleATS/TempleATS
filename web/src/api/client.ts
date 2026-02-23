@@ -65,6 +65,30 @@ export interface Job {
   updated_at: string;
 }
 
+export interface CareerOrg {
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  website: string | null;
+}
+
+export interface CareerJob {
+  id: string;
+  title: string;
+  description: string;
+  location: { String: string; Valid: boolean } | null;
+  department: { String: string; Valid: boolean } | null;
+  salary: { String: string; Valid: boolean } | null;
+  status: string;
+  created_at: { Time: string; Valid: boolean };
+}
+
+export interface ApplyResponse {
+  applicationId: string;
+  candidateId: string;
+  message: string;
+}
+
 export const api = {
   auth: {
     signup: (data: { email: string; name: string; password: string; orgName: string; orgSlug: string }) =>
@@ -93,5 +117,13 @@ export const api = {
     get: (id: string) => request<Job>(`/jobs/${id}`),
     update: (id: string, data: { title: string; description: string; location?: string; department?: string; salary?: string; status: string; requisitionId?: string }) =>
       request<Job>(`/jobs/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  },
+  careers: {
+    listJobs: (orgSlug: string) =>
+      request<{ organization: CareerOrg; jobs: CareerJob[] }>(`/careers/${orgSlug}`),
+    getJob: (orgSlug: string, jobId: string) =>
+      request<CareerJob>(`/careers/${orgSlug}/jobs/${jobId}`),
+    apply: (orgSlug: string, jobId: string, data: { name: string; email: string; phone?: string; resumeUrl?: string; resumeFilename?: string }) =>
+      request<ApplyResponse>(`/careers/${orgSlug}/jobs/${jobId}/apply`, { method: 'POST', body: JSON.stringify(data) }),
   },
 };

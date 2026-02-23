@@ -68,6 +68,11 @@ func main() {
 	r.Post("/api/auth/login", srv.Login)
 	r.Post("/api/auth/logout", srv.Logout)
 
+	// Public careers routes (no auth)
+	r.Get("/api/careers/{orgSlug}", srv.CareersListJobs)
+	r.Get("/api/careers/{orgSlug}/jobs/{jobId}", srv.CareersGetJob)
+	r.Post("/api/careers/{orgSlug}/jobs/{jobId}/apply", srv.CareersApply)
+
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(mw.RequireAuth)

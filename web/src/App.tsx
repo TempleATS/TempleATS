@@ -9,6 +9,9 @@ import ReqDetail from './pages/ReqDetail'
 import Jobs from './pages/Jobs'
 import JobForm from './pages/JobForm'
 import JobDetail from './pages/JobDetail'
+import CareersPage from './pages/careers/CareersPage'
+import CareerJobDetail from './pages/careers/CareerJobDetail'
+import ApplyForm from './pages/careers/ApplyForm'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -48,6 +51,11 @@ function AppRoutes() {
       <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
       <Route path="/jobs/new" element={<ProtectedRoute><JobForm /></ProtectedRoute>} />
       <Route path="/jobs/:jobId" element={<ProtectedRoute><JobDetail /></ProtectedRoute>} />
+
+      {/* Public careers routes (no auth) */}
+      <Route path="/careers/:orgSlug" element={<CareersPage />} />
+      <Route path="/careers/:orgSlug/jobs/:jobId" element={<CareerJobDetail />} />
+      <Route path="/careers/:orgSlug/jobs/:jobId/apply" element={<ApplyForm />} />
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
     </Routes>
