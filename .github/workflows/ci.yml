@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: temple
+          POSTGRES_PASSWORD: temple
+          POSTGRES_DB: temple_ats
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U temple"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Apply migrations
+        run: |
+          for f in migrations/*.sql; do
+            psql "$DATABASE_URL" -f "$f"
+          done
+        env:
+          DATABASE_URL: postgresql://temple:temple@localhost:5432/temple_ats?sslmode=disable
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -v -count=1
+        env:
+          DATABASE_URL: postgresql://temple:temple@localhost:5432/temple_ats?sslmode=disable
+          JWT_SECRET: ci-test-secret
+
+  frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Lint
+        run: npm run lint
+        working-directory: web
+
+      - name: Build
+        run: npm run build
+        working-directory: web
