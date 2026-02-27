@@ -1,10 +1,17 @@
 # Go
 bin/
 *.exe
+*.exe~
+temple-ats
+templeats-*
+cmd/server/static/
 
 # React
 web/node_modules/
 web/dist/
+
+# Uploads
+uploads/
 
 # Environment
 .env
