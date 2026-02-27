@@ -17,7 +17,9 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/temple-ats/TempleATS/internal/handler"
+	"github.com/temple-ats/TempleATS/internal/migrate"
 	mw "github.com/temple-ats/TempleATS/internal/middleware"
+	"github.com/temple-ats/TempleATS/migrations"
 )
 
 //go:embed static
@@ -44,6 +46,11 @@ func main() {
 
 	if err := pool.Ping(ctx); err != nil {
 		log.Fatalf("failed to ping database: %v", err)
+	}
+
+	// Run database migrations
+	if err := migrate.Run(ctx, pool, migrations.Files, "."); err != nil {
+		log.Fatalf("failed to run migrations: %v", err)
 	}
 
 	uploadDir := os.Getenv("UPLOAD_DIR")
