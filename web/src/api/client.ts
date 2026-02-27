@@ -643,6 +643,14 @@ export const api = {
     confirm: (token: string, slotId: string) =>
       request<{ status: string }>(`/schedule/${token}/confirm`, { method: 'POST', body: JSON.stringify({ slotId }) }),
   },
+  query: {
+    run: (sql: string) =>
+      request<{ columns: string[]; rows: (string | number | boolean | null)[][]; count: number }>('/query', { method: 'POST', body: JSON.stringify({ sql }) }),
+  },
+  search: {
+    resumes: (q: string) =>
+      request<{ results: { id: string; name: string; email: string; company: string; resume_filename: string; snippet: string }[]; count: number }>('/search/resumes', { method: 'POST', body: JSON.stringify({ q }) }),
+  },
   referrals: {
     list: () => request<Referral[]>('/referrals'),
     create: async (data: { name: string; email: string; phone?: string; jobId: string; resume?: File }): Promise<{ referralId: string; applicationId: string; candidateId: string }> => {

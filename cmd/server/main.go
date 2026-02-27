@@ -212,6 +212,8 @@ func main() {
 		// Write: super_admin + admin + recruiter
 		r.Group(func(r chi.Router) {
 			r.Use(mw.RequireRole("super_admin", "admin", "recruiter"))
+			r.Post("/api/query", srv.RunQuery)
+			r.Post("/api/search/resumes", srv.SearchResumes)
 			r.Put("/api/jobs/{jobId}", srv.UpdateJob)
 			r.Post("/api/candidates", srv.CreateCandidate)
 			r.Put("/api/candidates/{candidateId}", srv.UpdateCandidate)

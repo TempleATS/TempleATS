@@ -46,7 +46,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function DefaultRedirect() {
   const { user, isAtLeast } = useAuth();
-  const dest = user && isAtLeast('recruiter') ? '/dashboard'
+  const dest = user && isAtLeast('admin') ? '/dashboard'
+    : user && isAtLeast('recruiter') ? '/jobs'
     : user && isAtLeast('hiring_manager') ? '/jobs'
     : '/interviews';
   return <Navigate to={dest} replace />;

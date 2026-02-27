@@ -5,6 +5,15 @@ import { useAuth } from '../hooks/use-auth';
 import { STAGE_LABELS } from '../components/pipeline/KanbanBoard';
 import DashboardLayout from '../components/layout/DashboardLayout';
 
+type ResumeResult = {
+  id: string;
+  name: string;
+  email: string;
+  company: string;
+  resume_filename: string;
+  snippet: string;
+};
+
 const STAGES = ['applied', 'hr_screen', 'hm_review', 'first_interview', 'final_interview', 'offer', 'rejected'];
 const REJECTION_REASONS = ['Not qualified', 'Position filled', 'Withdrew', 'No response', 'Culture fit', 'Compensation', 'Other'];
 
@@ -103,6 +112,12 @@ export default function Candidates() {
   const [search, setSearch] = useState('');
   const [selectedApp, setSelectedApp] = useState<Record<string, number>>({});
 
+  // Resume search state
+  const [resumeResults, setResumeResults] = useState<ResumeResult[]>([]);
+  const [resumeCount, setResumeCount] = useState<number | null>(null);
+  const [resumeSearching, setResumeSearching] = useState(false);
+  const [resumeError, setResumeError] = useState('');
+
   // Add candidate form state
   const [showAddForm, setShowAddForm] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -123,18 +138,44 @@ export default function Candidates() {
   const [rejecting, setRejecting] = useState(false);
 
   const reload = () => {
-    api.candidates.list(search || undefined).then(setRawRows);
+    api.candidates.list().then(setRawRows);
   };
 
   useEffect(() => {
     setLoading(true);
-    const timeout = setTimeout(() => {
-      api.candidates.list(search || undefined)
-        .then(setRawRows)
-        .finally(() => setLoading(false));
-    }, search ? 300 : 0);
-    return () => clearTimeout(timeout);
-  }, [search]);
+    api.candidates.list()
+      .then(setRawRows)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const runResumeSearch = async () => {
+    if (!search.trim()) {
+      setResumeResults([]);
+      setResumeCount(null);
+      setResumeError('');
+      return;
+    }
+    setResumeSearching(true);
+    setResumeError('');
+    try {
+      const res = await api.search.resumes(search);
+      setResumeResults(res.results);
+      setResumeCount(res.count);
+    } catch (err: unknown) {
+      setResumeError(err instanceof Error ? err.message : 'Search failed');
+      setResumeResults([]);
+      setResumeCount(null);
+    } finally {
+      setResumeSearching(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearch('');
+    setResumeResults([]);
+    setResumeCount(null);
+    setResumeError('');
+  };
 
   useEffect(() => {
     if (showAddForm && jobs.length === 0) {
@@ -323,14 +364,67 @@ export default function Candidates() {
       )}
 
       <div className="mb-4">
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search by name or email..."
-          className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
+        <p className="text-xs text-gray-500 mb-1">
+          Search resumes with <code className="bg-gray-100 px-1 rounded">AND</code>, <code className="bg-gray-100 px-1 rounded">OR</code>, <code className="bg-gray-100 px-1 rounded">NOT</code>, <code className="bg-gray-100 px-1 rounded">"phrases"</code>
+        </p>
+        <div className="flex gap-2 max-w-2xl">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') runResumeSearch(); }}
+            placeholder='e.g. python AND "machine learning" NOT junior'
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+          />
+          <button
+            onClick={runResumeSearch}
+            disabled={resumeSearching || !search.trim()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+          >
+            {resumeSearching ? 'Searching...' : 'Search'}
+          </button>
+          {resumeCount !== null && (
+            <button
+              onClick={clearSearch}
+              className="px-3 py-2 text-sm text-gray-500 hover:text-gray-700"
+            >
+              Clear
+            </button>
+          )}
+        </div>
       </div>
+
+      {resumeError && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded text-red-700 text-sm">{resumeError}</div>
+      )}
+
+      {resumeCount !== null && (
+        <>
+          <p className="text-sm text-gray-500 mb-3">{resumeCount} candidate{resumeCount !== 1 ? 's' : ''} found</p>
+          {resumeResults.length > 0 ? (
+            <div className="space-y-3 mb-6">
+              {resumeResults.map(r => (
+                <div key={r.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <Link to={`/candidates/${r.id}`} className="text-base font-medium text-blue-600 hover:underline">{r.name}</Link>
+                      <p className="text-sm text-gray-600 mt-0.5">{r.email}{r.company ? ` · ${r.company}` : ''}</p>
+                      {r.resume_filename && <p className="text-xs text-gray-400 mt-0.5">{r.resume_filename}</p>}
+                    </div>
+                  </div>
+                  {r.snippet && (
+                    <p className="text-sm text-gray-500 mt-2 whitespace-pre-line line-clamp-4">{r.snippet}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 bg-white rounded-lg border mb-6">
+              <p className="text-gray-500">No resumes match your search.</p>
+            </div>
+          )}
+        </>
+      )}
 
       {loading ? (
         <p className="text-gray-500">Loading...</p>

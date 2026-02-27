@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { api, type DashboardMetricsData, type PersonStats } from '../api/client';
+import { useAuth } from '../hooks/use-auth';
 import DashboardLayout from '../components/layout/DashboardLayout';
 
 function pct(ratio: number | null | undefined): string {
@@ -60,8 +61,13 @@ function PersonTable({ title, rows, roleLabel }: { title: string; rows: PersonSt
 }
 
 export default function Dashboard() {
+  const { isAtLeast } = useAuth();
   const [data, setData] = useState<DashboardMetricsData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  if (!isAtLeast('admin')) {
+    return <Navigate to="/jobs" replace />;
+  }
 
   useEffect(() => {
     api.metrics.dashboard().then(setData).catch(() => {}).finally(() => setLoading(false));

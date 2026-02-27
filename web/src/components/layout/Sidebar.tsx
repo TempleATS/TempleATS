@@ -8,7 +8,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { path: '/dashboard', label: 'Dashboard', minRole: 'recruiter' },
+  { path: '/dashboard', label: 'Dashboard', minRole: 'admin' },
   { path: '/reqs', label: 'Requisitions', minRole: 'recruiter' },
   { path: '/jobs', label: 'Jobs', minRole: 'hiring_manager' },
   { path: '/candidates', label: 'Candidates', minRole: 'hiring_manager' },
