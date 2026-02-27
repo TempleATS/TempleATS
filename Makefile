@@ -1,8 +1,8 @@
-.PHONY: dev build test migrate sqlc clean
+.PHONY: dev build test migrate seed sqlc clean
 
 # Development: run Go server with hot reload (requires air) or plain go run
 dev:
-	DATABASE_URL=$(DATABASE_URL) go run ./cmd/server
+	DATABASE_URL=$(DATABASE_URL) JWT_SECRET=$(JWT_SECRET) go run ./cmd/server
 
 # Build: compile React app then embed in Go binary
 build: build-web
@@ -21,9 +21,13 @@ test:
 test-short:
 	go test ./... -v -short -count=1
 
-# Apply migrations to local database
+# Apply all migrations in order
 migrate:
-	psql $(DATABASE_URL) -f migrations/001_init.sql
+	@for f in migrations/*.sql; do echo "Applying $$f..."; psql $(DATABASE_URL) -f "$$f"; done
+
+# Seed the database with a demo organization and admin user
+seed:
+	DATABASE_URL=$(DATABASE_URL) go run ./cmd/seed
 
 # Generate sqlc code from queries
 sqlc:

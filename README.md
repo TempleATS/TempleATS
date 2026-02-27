@@ -67,21 +67,13 @@ cp .env.example .env
 createdb temple_ats
 ```
 
-### 3. Run migrations
-
-Apply all migration files in order:
-
-```bash
-for f in migrations/*.sql; do psql "$DATABASE_URL" -f "$f"; done
-```
-
-### 4. Install frontend dependencies
+### 3. Install frontend dependencies
 
 ```bash
 cd web && npm install && cd ..
 ```
 
-### 5. Run in development mode
+### 4. Run in development mode
 
 Start the Go backend and React dev server separately:
 
@@ -93,7 +85,15 @@ make dev
 cd web && npm run dev
 ```
 
-The app will be available at `http://localhost:5173`. Sign up to create your first organization and admin account.
+The app will be available at `http://localhost:5173`. Database migrations run automatically on startup.
+
+Sign up to create your first organization and admin account, or seed demo data:
+
+```bash
+make seed
+```
+
+This creates a "Demo Company" org with login credentials `admin@example.com` / `password`.
 
 ### Production Build
 
@@ -124,12 +124,14 @@ DATABASE_URL=postgresql://... JWT_SECRET=your-secret ./bin/temple-ats
 
 ```
 cmd/
-  server/          # Application entry point, routing
+  server/          # Application entry point, routing, auto-migration
+  seed/            # Seed demo data (org + admin user)
 internal/
   auth/            # JWT token generation and validation
   db/              # sqlc-generated database layer
   email/           # SMTP email service
   handler/         # HTTP request handlers
+  migrate/         # Auto-migration runner
   middleware/      # Auth and RBAC middleware
   calendar/        # Google Calendar integration
 migrations/        # PostgreSQL schema migrations (applied in order)
@@ -148,7 +150,8 @@ web/               # React + TypeScript frontend
 | `make build-web` | Build React app only |
 | `make test` | Run all tests |
 | `make test-short` | Run tests (skip integration) |
-| `make migrate` | Apply initial migration |
+| `make migrate` | Apply all migrations via psql |
+| `make seed` | Create demo org + admin user |
 | `make sqlc` | Regenerate Go code from SQL queries |
 | `make clean` | Remove build artifacts |
 
