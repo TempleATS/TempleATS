@@ -24,7 +24,7 @@ var (
 func getSecret() []byte {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "dev-secret-change-me"
+		panic("JWT_SECRET environment variable is required")
 	}
 	return []byte(secret)
 }
