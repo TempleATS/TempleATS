@@ -41,6 +41,27 @@ func RequireAuth(next http.Handler) http.Handler {
 	})
 }
 
+// RequireRole returns middleware that restricts access to the given roles.
+// Must be used after RequireAuth.
+func RequireRole(allowed ...string) func(http.Handler) http.Handler {
+	allowedSet := make(map[string]bool, len(allowed))
+	for _, r := range allowed {
+		allowedSet[r] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			role := GetRole(r.Context())
+			if !allowedSet[role] {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"error":"forbidden"}`))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // GetUserID extracts the user ID from the request context.
 func GetUserID(ctx context.Context) string {
 	v, _ := ctx.Value(UserIDKey).(string)

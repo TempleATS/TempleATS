@@ -2,16 +2,36 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api, type Candidate, type CandidateApplication } from '../api/client';
 import DashboardLayout from '../components/layout/DashboardLayout';
+import { STAGE_LABELS } from '../components/pipeline/KanbanBoard';
 
-function pgText(val: { String: string; Valid: boolean } | null): string | null {
-  return val?.Valid ? val.String : null;
+function pgText(val: unknown): string | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'string') return val || null;
+  if (typeof val === 'object' && val !== null && 'Valid' in val) {
+    const t = val as { String: string; Valid: boolean };
+    return t.Valid ? t.String : null;
+  }
+  return null;
+}
+
+function pgTime(val: unknown): string | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'string') return val || null;
+  if (typeof val === 'object' && val !== null && 'Time' in val) {
+    const t = val as { Time: string; Valid: boolean };
+    return t.Valid ? t.Time : null;
+  }
+  return null;
 }
 
 const stageColor = (stage: string) => {
   switch (stage) {
     case 'applied': return 'bg-blue-100 text-blue-800';
-    case 'screening': return 'bg-yellow-100 text-yellow-800';
-    case 'interview': return 'bg-purple-100 text-purple-800';
+    case 'hr_screen': return 'bg-cyan-100 text-cyan-800';
+    case 'hm_review': return 'bg-yellow-100 text-yellow-800';
+    case 'first_interview': return 'bg-purple-100 text-purple-800';
+    case 'final_interview': return 'bg-indigo-100 text-indigo-800';
+    case 'approval': return 'bg-amber-100 text-amber-800';
     case 'offer': return 'bg-green-100 text-green-800';
     case 'hired': return 'bg-emerald-100 text-emerald-800';
     case 'rejected': return 'bg-red-100 text-red-800';
@@ -73,12 +93,12 @@ export default function CandidateDetail() {
               <div>
                 <p className="font-medium text-gray-900">{app.job_title}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Applied {app.created_at?.Time ? new Date(app.created_at.Time).toLocaleDateString() : ''}
+                  Applied {pgTime(app.created_at) ? new Date(pgTime(app.created_at)!).toLocaleDateString() : ''}
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 <span className={`text-xs px-2 py-1 rounded-full font-medium ${stageColor(app.stage)}`}>
-                  {app.stage}
+                  {STAGE_LABELS[app.stage] || app.stage}
                 </span>
                 {pgText(app.rejection_reason) && (
                   <span className="text-xs text-red-500">{pgText(app.rejection_reason)}</span>

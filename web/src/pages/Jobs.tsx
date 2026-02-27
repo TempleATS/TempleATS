@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Job } from '../api/client';
+import { useAuth } from '../hooks/use-auth';
 import DashboardLayout from '../components/layout/DashboardLayout';
 
 export default function Jobs() {
+  const { isAtLeast } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const canCreate = isAtLeast('admin');
 
   useEffect(() => {
     api.jobs.list().then(setJobs).finally(() => setLoading(false));
@@ -24,12 +27,14 @@ export default function Jobs() {
     <DashboardLayout>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-semibold text-gray-900">Jobs</h2>
-        <Link
-          to="/jobs/new"
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
-        >
-          Create Job
-        </Link>
+        {canCreate && (
+          <Link
+            to="/jobs/new"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+          >
+            Create Job
+          </Link>
+        )}
       </div>
 
       {loading ? (
@@ -58,7 +63,7 @@ export default function Jobs() {
               {jobs.map(job => (
                 <tr key={job.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
-                    <Link to={`/jobs/${job.id}`} className="text-blue-600 hover:underline font-medium">
+                    <Link to={`/jobs/${job.id}/pipeline`} className="text-blue-600 hover:underline font-medium">
                       {job.title}
                     </Link>
                   </td>

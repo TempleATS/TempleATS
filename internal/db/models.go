@@ -17,6 +17,20 @@ type Application struct {
 	JobID           string             `json:"job_id"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	ReferralID      pgtype.Text        `json:"referral_id"`
+}
+
+type Referral struct {
+	ID             string             `json:"id"`
+	ReferrerID     string             `json:"referrer_id"`
+	OrganizationID string             `json:"organization_id"`
+	JobID          string             `json:"job_id"`
+	Token          string             `json:"token"`
+	Source         string             `json:"source"`
+	CandidateName  pgtype.Text        `json:"candidate_name"`
+	CandidateID    pgtype.Text        `json:"candidate_id"`
+	ApplicationID  pgtype.Text        `json:"application_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 }
 
 type Candidate struct {
@@ -26,9 +40,39 @@ type Candidate struct {
 	Phone          pgtype.Text        `json:"phone"`
 	ResumeUrl      pgtype.Text        `json:"resume_url"`
 	ResumeFilename pgtype.Text        `json:"resume_filename"`
+	Company        pgtype.Text        `json:"company"`
+	LinkedinUrl    pgtype.Text        `json:"linkedin_url"`
 	OrganizationID string             `json:"organization_id"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CandidateContact struct {
+	ID          string             `json:"id"`
+	CandidateID string             `json:"candidate_id"`
+	Category    string             `json:"category"`
+	Label       string             `json:"label"`
+	Value       string             `json:"value"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type InterviewFeedback struct {
+	ID             string             `json:"id"`
+	ApplicationID  string             `json:"application_id"`
+	Stage          string             `json:"stage"`
+	InterviewType  pgtype.Text        `json:"interview_type"`
+	Recommendation string             `json:"recommendation"`
+	Content        string             `json:"content"`
+	AuthorID       string             `json:"author_id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type InterviewAssignment struct {
+	ID            string             `json:"id"`
+	ApplicationID string             `json:"application_id"`
+	InterviewerID string             `json:"interviewer_id"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
 type Invitation struct {
@@ -43,17 +87,21 @@ type Invitation struct {
 }
 
 type Job struct {
-	ID             string             `json:"id"`
-	Title          string             `json:"title"`
-	Description    string             `json:"description"`
-	Location       pgtype.Text        `json:"location"`
-	Department     pgtype.Text        `json:"department"`
-	Salary         pgtype.Text        `json:"salary"`
-	Status         string             `json:"status"`
-	RequisitionID  pgtype.Text        `json:"requisition_id"`
-	OrganizationID string             `json:"organization_id"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+	ID               string             `json:"id"`
+	Title            string             `json:"title"`
+	CompanyBlurb     string             `json:"company_blurb"`
+	TeamDetails      string             `json:"team_details"`
+	Responsibilities string             `json:"responsibilities"`
+	Qualifications   string             `json:"qualifications"`
+	ClosingStatement string             `json:"closing_statement"`
+	Location         pgtype.Text        `json:"location"`
+	Department       pgtype.Text        `json:"department"`
+	Salary           pgtype.Text        `json:"salary"`
+	Status           string             `json:"status"`
+	RequisitionID    pgtype.Text        `json:"requisition_id"`
+	OrganizationID   string             `json:"organization_id"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Note struct {
@@ -65,23 +113,27 @@ type Note struct {
 }
 
 type Organization struct {
-	ID        string             `json:"id"`
-	Name      string             `json:"name"`
-	Slug      string             `json:"slug"`
-	LogoUrl   pgtype.Text        `json:"logo_url"`
-	Website   pgtype.Text        `json:"website"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID                      string             `json:"id"`
+	Name                    string             `json:"name"`
+	Slug                    string             `json:"slug"`
+	LogoUrl                 pgtype.Text        `json:"logo_url"`
+	Website                 pgtype.Text        `json:"website"`
+	DefaultCompanyBlurb     string             `json:"default_company_blurb"`
+	DefaultClosingStatement string             `json:"default_closing_statement"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Requisition struct {
 	ID              string             `json:"id"`
 	Title           string             `json:"title"`
+	JobCode         pgtype.Text        `json:"job_code"`
 	Level           pgtype.Text        `json:"level"`
 	Department      pgtype.Text        `json:"department"`
 	TargetHires     int32              `json:"target_hires"`
 	Status          string             `json:"status"`
 	HiringManagerID pgtype.Text        `json:"hiring_manager_id"`
+	RecruiterID     pgtype.Text        `json:"recruiter_id"`
 	OrganizationID  string             `json:"organization_id"`
 	OpenedAt        pgtype.Timestamptz `json:"opened_at"`
 	ClosedAt        pgtype.Timestamptz `json:"closed_at"`
@@ -96,6 +148,87 @@ type StageTransition struct {
 	ToStage       string             `json:"to_stage"`
 	MovedByID     pgtype.Text        `json:"moved_by_id"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type SmtpSetting struct {
+	ID             string             `json:"id"`
+	OrganizationID string             `json:"organization_id"`
+	Host           string             `json:"host"`
+	Port           int32              `json:"port"`
+	Username       string             `json:"username"`
+	Password       string             `json:"password"`
+	FromEmail      string             `json:"from_email"`
+	FromName       string             `json:"from_name"`
+	TlsEnabled     bool               `json:"tls_enabled"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type EmailTemplate struct {
+	ID             string             `json:"id"`
+	OrganizationID string             `json:"organization_id"`
+	Stage          string             `json:"stage"`
+	Subject        string             `json:"subject"`
+	Body           string             `json:"body"`
+	Enabled        bool               `json:"enabled"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Notification struct {
+	ID              string             `json:"id"`
+	OrganizationID  string             `json:"organization_id"`
+	Type            string             `json:"type"`
+	RecipientEmail  string             `json:"recipient_email"`
+	RecipientName   string             `json:"recipient_name"`
+	Subject         string             `json:"subject"`
+	Body            string             `json:"body"`
+	Status          string             `json:"status"`
+	ErrorMessage    pgtype.Text        `json:"error_message"`
+	ApplicationID   pgtype.Text        `json:"application_id"`
+	NoteID          pgtype.Text        `json:"note_id"`
+	TriggeredByID   pgtype.Text        `json:"triggered_by_id"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type UserCalendarConnection struct {
+	ID            string             `json:"id"`
+	UserID        string             `json:"user_id"`
+	Provider      string             `json:"provider"`
+	AccessToken   string             `json:"-"`
+	RefreshToken  string             `json:"-"`
+	TokenExpiry   pgtype.Timestamptz `json:"-"`
+	CalendarEmail string             `json:"calendar_email"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type InterviewSchedule struct {
+	ID              string             `json:"id"`
+	ApplicationID   string             `json:"application_id"`
+	Token           string             `json:"token"`
+	Status          string             `json:"status"`
+	DurationMinutes int32              `json:"duration_minutes"`
+	Location        pgtype.Text        `json:"location"`
+	MeetingUrl      pgtype.Text        `json:"meeting_url"`
+	Notes           pgtype.Text        `json:"notes"`
+	CreatedBy       string             `json:"created_by"`
+	ConfirmedAt     pgtype.Timestamptz `json:"confirmed_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type InterviewSlot struct {
+	ID         string             `json:"id"`
+	ScheduleID string             `json:"schedule_id"`
+	StartTime  pgtype.Timestamptz `json:"start_time"`
+	EndTime    pgtype.Timestamptz `json:"end_time"`
+	Selected   bool               `json:"selected"`
+}
+
+type InterviewScheduleInterviewer struct {
+	ScheduleID      string      `json:"schedule_id"`
+	UserID          string      `json:"user_id"`
+	CalendarEventID pgtype.Text `json:"calendar_event_id"`
 }
 
 type User struct {

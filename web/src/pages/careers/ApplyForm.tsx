@@ -1,15 +1,19 @@
-import { useState, type FormEvent } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useRef, type FormEvent } from 'react';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { api } from '../../api/client';
 
 export default function ApplyForm() {
   const { orgSlug, jobId } = useParams<{ orgSlug: string; jobId: string }>();
+  const [searchParams] = useSearchParams();
+  const ref = searchParams.get('ref') || undefined;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [resume, setResume] = useState<File | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -21,7 +25,8 @@ export default function ApplyForm() {
         name,
         email,
         phone: phone || undefined,
-      });
+        resume: resume || undefined,
+      }, ref);
       setSubmitted(true);
     } catch (err: any) {
       setError(err.message);
@@ -102,7 +107,37 @@ export default function ApplyForm() {
             />
           </div>
 
-          <p className="text-xs text-gray-400">Resume upload will be available soon.</p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Resume</label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.doc,.docx"
+              onChange={e => setResume(e.target.files?.[0] || null)}
+              className="hidden"
+            />
+            {resume ? (
+              <div className="flex items-center gap-3 px-3 py-2 border border-gray-300 rounded-md bg-gray-50">
+                <span className="text-sm text-gray-700 truncate flex-1">{resume.name}</span>
+                <button
+                  type="button"
+                  onClick={() => { setResume(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
+                  className="text-gray-400 hover:text-red-500 text-sm"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full px-3 py-2 border border-dashed border-gray-300 rounded-md text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              >
+                Upload resume (PDF, DOC, DOCX)
+              </button>
+            )}
+            <p className="text-xs text-gray-400 mt-1">Max 10MB</p>
+          </div>
 
           <div className="flex gap-3 pt-2">
             <button

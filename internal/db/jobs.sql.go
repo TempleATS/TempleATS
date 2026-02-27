@@ -12,26 +12,34 @@ import (
 )
 
 const createJob = `-- name: CreateJob :one
-INSERT INTO jobs (title, description, location, department, salary, status, requisition_id, organization_id)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, title, description, location, department, salary, status, requisition_id, organization_id, created_at, updated_at
+INSERT INTO jobs (title, company_blurb, team_details, responsibilities, qualifications, closing_statement, location, department, salary, status, requisition_id, organization_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, title, company_blurb, team_details, responsibilities, qualifications, closing_statement, location, department, salary, status, requisition_id, organization_id, created_at, updated_at
 `
 
 type CreateJobParams struct {
-	Title          string      `json:"title"`
-	Description    string      `json:"description"`
-	Location       pgtype.Text `json:"location"`
-	Department     pgtype.Text `json:"department"`
-	Salary         pgtype.Text `json:"salary"`
-	Status         string      `json:"status"`
-	RequisitionID  pgtype.Text `json:"requisition_id"`
-	OrganizationID string      `json:"organization_id"`
+	Title            string      `json:"title"`
+	CompanyBlurb     string      `json:"company_blurb"`
+	TeamDetails      string      `json:"team_details"`
+	Responsibilities string      `json:"responsibilities"`
+	Qualifications   string      `json:"qualifications"`
+	ClosingStatement string      `json:"closing_statement"`
+	Location         pgtype.Text `json:"location"`
+	Department       pgtype.Text `json:"department"`
+	Salary           pgtype.Text `json:"salary"`
+	Status           string      `json:"status"`
+	RequisitionID    pgtype.Text `json:"requisition_id"`
+	OrganizationID   string      `json:"organization_id"`
 }
 
 func (q *Queries) CreateJob(ctx context.Context, arg CreateJobParams) (Job, error) {
 	row := q.db.QueryRow(ctx, createJob,
 		arg.Title,
-		arg.Description,
+		arg.CompanyBlurb,
+		arg.TeamDetails,
+		arg.Responsibilities,
+		arg.Qualifications,
+		arg.ClosingStatement,
 		arg.Location,
 		arg.Department,
 		arg.Salary,
@@ -43,7 +51,11 @@ func (q *Queries) CreateJob(ctx context.Context, arg CreateJobParams) (Job, erro
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.Description,
+		&i.CompanyBlurb,
+		&i.TeamDetails,
+		&i.Responsibilities,
+		&i.Qualifications,
+		&i.ClosingStatement,
 		&i.Location,
 		&i.Department,
 		&i.Salary,
@@ -57,7 +69,7 @@ func (q *Queries) CreateJob(ctx context.Context, arg CreateJobParams) (Job, erro
 }
 
 const getJobByID = `-- name: GetJobByID :one
-SELECT id, title, description, location, department, salary, status, requisition_id, organization_id, created_at, updated_at FROM jobs WHERE id = $1 AND organization_id = $2
+SELECT id, title, company_blurb, team_details, responsibilities, qualifications, closing_statement, location, department, salary, status, requisition_id, organization_id, created_at, updated_at FROM jobs WHERE id = $1 AND organization_id = $2
 `
 
 type GetJobByIDParams struct {
@@ -71,7 +83,11 @@ func (q *Queries) GetJobByID(ctx context.Context, arg GetJobByIDParams) (Job, er
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.Description,
+		&i.CompanyBlurb,
+		&i.TeamDetails,
+		&i.Responsibilities,
+		&i.Qualifications,
+		&i.ClosingStatement,
 		&i.Location,
 		&i.Department,
 		&i.Salary,
@@ -85,7 +101,7 @@ func (q *Queries) GetJobByID(ctx context.Context, arg GetJobByIDParams) (Job, er
 }
 
 const getJobPublic = `-- name: GetJobPublic :one
-SELECT id, title, description, location, department, salary, status, requisition_id, organization_id, created_at, updated_at FROM jobs WHERE id = $1 AND status = 'open'
+SELECT id, title, company_blurb, team_details, responsibilities, qualifications, closing_statement, location, department, salary, status, requisition_id, organization_id, created_at, updated_at FROM jobs WHERE id = $1 AND status = 'open'
 `
 
 func (q *Queries) GetJobPublic(ctx context.Context, id string) (Job, error) {
@@ -94,7 +110,11 @@ func (q *Queries) GetJobPublic(ctx context.Context, id string) (Job, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.Description,
+		&i.CompanyBlurb,
+		&i.TeamDetails,
+		&i.Responsibilities,
+		&i.Qualifications,
+		&i.ClosingStatement,
 		&i.Location,
 		&i.Department,
 		&i.Salary,
@@ -107,8 +127,105 @@ func (q *Queries) GetJobPublic(ctx context.Context, id string) (Job, error) {
 	return i, err
 }
 
+const listJobsByHiringManager = `-- name: ListJobsByHiringManager :many
+SELECT j.id, j.title, j.company_blurb, j.team_details, j.responsibilities, j.qualifications, j.closing_statement, j.location, j.department, j.salary, j.status, j.requisition_id, j.organization_id, j.created_at, j.updated_at FROM jobs j
+JOIN requisitions r ON j.requisition_id = r.id
+WHERE j.organization_id = $1 AND r.hiring_manager_id = $2
+ORDER BY j.created_at DESC
+`
+
+type ListJobsByHiringManagerParams struct {
+	OrganizationID  string      `json:"organization_id"`
+	HiringManagerID pgtype.Text `json:"hiring_manager_id"`
+}
+
+func (q *Queries) ListJobsByHiringManager(ctx context.Context, arg ListJobsByHiringManagerParams) ([]Job, error) {
+	rows, err := q.db.Query(ctx, listJobsByHiringManager, arg.OrganizationID, arg.HiringManagerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.CompanyBlurb,
+			&i.TeamDetails,
+			&i.Responsibilities,
+			&i.Qualifications,
+			&i.ClosingStatement,
+			&i.Location,
+			&i.Department,
+			&i.Salary,
+			&i.Status,
+			&i.RequisitionID,
+			&i.OrganizationID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listJobsByInterviewer = `-- name: ListJobsByInterviewer :many
+SELECT DISTINCT j.id, j.title, j.company_blurb, j.team_details, j.responsibilities, j.qualifications, j.closing_statement, j.location, j.department, j.salary, j.status, j.requisition_id, j.organization_id, j.created_at, j.updated_at FROM jobs j
+JOIN applications a ON a.job_id = j.id
+JOIN interview_assignments ia ON ia.application_id = a.id
+WHERE j.organization_id = $1 AND ia.interviewer_id = $2
+ORDER BY j.created_at DESC
+`
+
+type ListJobsByInterviewerParams struct {
+	OrganizationID string `json:"organization_id"`
+	InterviewerID  string `json:"interviewer_id"`
+}
+
+func (q *Queries) ListJobsByInterviewer(ctx context.Context, arg ListJobsByInterviewerParams) ([]Job, error) {
+	rows, err := q.db.Query(ctx, listJobsByInterviewer, arg.OrganizationID, arg.InterviewerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Job{}
+	for rows.Next() {
+		var i Job
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.CompanyBlurb,
+			&i.TeamDetails,
+			&i.Responsibilities,
+			&i.Qualifications,
+			&i.ClosingStatement,
+			&i.Location,
+			&i.Department,
+			&i.Salary,
+			&i.Status,
+			&i.RequisitionID,
+			&i.OrganizationID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listJobsByOrg = `-- name: ListJobsByOrg :many
-SELECT id, title, description, location, department, salary, status, requisition_id, organization_id, created_at, updated_at FROM jobs WHERE organization_id = $1 ORDER BY created_at DESC
+SELECT id, title, company_blurb, team_details, responsibilities, qualifications, closing_statement, location, department, salary, status, requisition_id, organization_id, created_at, updated_at FROM jobs WHERE organization_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListJobsByOrg(ctx context.Context, organizationID string) ([]Job, error) {
@@ -123,7 +240,11 @@ func (q *Queries) ListJobsByOrg(ctx context.Context, organizationID string) ([]J
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
-			&i.Description,
+			&i.CompanyBlurb,
+			&i.TeamDetails,
+			&i.Responsibilities,
+			&i.Qualifications,
+			&i.ClosingStatement,
 			&i.Location,
 			&i.Department,
 			&i.Salary,
@@ -144,7 +265,7 @@ func (q *Queries) ListJobsByOrg(ctx context.Context, organizationID string) ([]J
 }
 
 const listJobsByRequisition = `-- name: ListJobsByRequisition :many
-SELECT id, title, description, location, department, salary, status, requisition_id, organization_id, created_at, updated_at FROM jobs WHERE requisition_id = $1 AND organization_id = $2 ORDER BY created_at DESC
+SELECT id, title, company_blurb, team_details, responsibilities, qualifications, closing_statement, location, department, salary, status, requisition_id, organization_id, created_at, updated_at FROM jobs WHERE requisition_id = $1 AND organization_id = $2 ORDER BY created_at DESC
 `
 
 type ListJobsByRequisitionParams struct {
@@ -164,7 +285,11 @@ func (q *Queries) ListJobsByRequisition(ctx context.Context, arg ListJobsByRequi
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
-			&i.Description,
+			&i.CompanyBlurb,
+			&i.TeamDetails,
+			&i.Responsibilities,
+			&i.Qualifications,
+			&i.ClosingStatement,
 			&i.Location,
 			&i.Department,
 			&i.Salary,
@@ -185,7 +310,7 @@ func (q *Queries) ListJobsByRequisition(ctx context.Context, arg ListJobsByRequi
 }
 
 const listOpenJobsByOrgSlug = `-- name: ListOpenJobsByOrgSlug :many
-SELECT j.id, j.title, j.description, j.location, j.department, j.salary, j.status, j.requisition_id, j.organization_id, j.created_at, j.updated_at FROM jobs j
+SELECT j.id, j.title, j.company_blurb, j.team_details, j.responsibilities, j.qualifications, j.closing_statement, j.location, j.department, j.salary, j.status, j.requisition_id, j.organization_id, j.created_at, j.updated_at FROM jobs j
 JOIN organizations o ON j.organization_id = o.id
 WHERE o.slug = $1 AND j.status = 'open'
 ORDER BY j.created_at DESC
@@ -203,7 +328,11 @@ func (q *Queries) ListOpenJobsByOrgSlug(ctx context.Context, slug string) ([]Job
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
-			&i.Description,
+			&i.CompanyBlurb,
+			&i.TeamDetails,
+			&i.Responsibilities,
+			&i.Qualifications,
+			&i.ClosingStatement,
 			&i.Location,
 			&i.Department,
 			&i.Salary,
@@ -225,29 +354,38 @@ func (q *Queries) ListOpenJobsByOrgSlug(ctx context.Context, slug string) ([]Job
 
 const updateJob = `-- name: UpdateJob :one
 UPDATE jobs
-SET title = $2, description = $3, location = $4, department = $5,
-    salary = $6, status = $7, requisition_id = $8, updated_at = now()
-WHERE id = $1 AND organization_id = $9
-RETURNING id, title, description, location, department, salary, status, requisition_id, organization_id, created_at, updated_at
+SET title = $2, company_blurb = $3, team_details = $4, responsibilities = $5, qualifications = $6,
+    closing_statement = $7, location = $8, department = $9, salary = $10, status = $11,
+    requisition_id = $12, updated_at = now()
+WHERE id = $1 AND organization_id = $13
+RETURNING id, title, company_blurb, team_details, responsibilities, qualifications, closing_statement, location, department, salary, status, requisition_id, organization_id, created_at, updated_at
 `
 
 type UpdateJobParams struct {
-	ID             string      `json:"id"`
-	Title          string      `json:"title"`
-	Description    string      `json:"description"`
-	Location       pgtype.Text `json:"location"`
-	Department     pgtype.Text `json:"department"`
-	Salary         pgtype.Text `json:"salary"`
-	Status         string      `json:"status"`
-	RequisitionID  pgtype.Text `json:"requisition_id"`
-	OrganizationID string      `json:"organization_id"`
+	ID               string      `json:"id"`
+	Title            string      `json:"title"`
+	CompanyBlurb     string      `json:"company_blurb"`
+	TeamDetails      string      `json:"team_details"`
+	Responsibilities string      `json:"responsibilities"`
+	Qualifications   string      `json:"qualifications"`
+	ClosingStatement string      `json:"closing_statement"`
+	Location         pgtype.Text `json:"location"`
+	Department       pgtype.Text `json:"department"`
+	Salary           pgtype.Text `json:"salary"`
+	Status           string      `json:"status"`
+	RequisitionID    pgtype.Text `json:"requisition_id"`
+	OrganizationID   string      `json:"organization_id"`
 }
 
 func (q *Queries) UpdateJob(ctx context.Context, arg UpdateJobParams) (Job, error) {
 	row := q.db.QueryRow(ctx, updateJob,
 		arg.ID,
 		arg.Title,
-		arg.Description,
+		arg.CompanyBlurb,
+		arg.TeamDetails,
+		arg.Responsibilities,
+		arg.Qualifications,
+		arg.ClosingStatement,
 		arg.Location,
 		arg.Department,
 		arg.Salary,
@@ -259,7 +397,11 @@ func (q *Queries) UpdateJob(ctx context.Context, arg UpdateJobParams) (Job, erro
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.Description,
+		&i.CompanyBlurb,
+		&i.TeamDetails,
+		&i.Responsibilities,
+		&i.Qualifications,
+		&i.ClosingStatement,
 		&i.Location,
 		&i.Department,
 		&i.Salary,

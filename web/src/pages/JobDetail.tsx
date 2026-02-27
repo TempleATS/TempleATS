@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api, type Job } from '../api/client';
+import { useAuth } from '../hooks/use-auth';
 import DashboardLayout from '../components/layout/DashboardLayout';
 
 export default function JobDetail() {
   const { jobId } = useParams<{ jobId: string }>();
+  const { user, isAtLeast } = useAuth();
   const [job, setJob] = useState<Job | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
+  const canEdit = isAtLeast('recruiter');
 
   useEffect(() => {
     if (!jobId) return;
@@ -21,7 +24,11 @@ export default function JobDetail() {
       const newStatus = job.status === 'open' ? 'closed' : job.status === 'closed' ? 'draft' : 'open';
       const updated = await api.jobs.update(jobId, {
         title: job.title,
-        description: job.description,
+        companyBlurb: job.company_blurb,
+        teamDetails: job.team_details,
+        responsibilities: job.responsibilities,
+        qualifications: job.qualifications,
+        closingStatement: job.closing_statement,
         location: job.location || undefined,
         department: job.department || undefined,
         salary: job.salary || undefined,
@@ -67,13 +74,32 @@ export default function JobDetail() {
           </div>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={toggleStatus}
-            disabled={updating}
-            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm disabled:opacity-50"
-          >
-            {statusLabel}
-          </button>
+          {canEdit && (
+            <Link
+              to={`/jobs/${jobId}/edit`}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm"
+            >
+              Edit
+            </Link>
+          )}
+          {canEdit && (
+            <button
+              onClick={toggleStatus}
+              disabled={updating}
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm disabled:opacity-50"
+            >
+              {statusLabel}
+            </button>
+          )}
+          {job.status === 'open' && user && (
+            <Link
+              to={`/careers/${user.orgSlug}/jobs/${jobId}`}
+              target="_blank"
+              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 text-sm"
+            >
+              View Posting
+            </Link>
+          )}
           <Link
             to={`/jobs/${jobId}/pipeline`}
             className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
@@ -83,11 +109,41 @@ export default function JobDetail() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-3">Description</h3>
-        <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
-          {job.description}
-        </div>
+      <div className="space-y-6">
+        {job.company_blurb && (
+          <div className="bg-white rounded-lg border p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-3">About the Company</h3>
+            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">{job.company_blurb}</div>
+          </div>
+        )}
+
+        {job.team_details && (
+          <div className="bg-white rounded-lg border p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-3">The Team</h3>
+            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">{job.team_details}</div>
+          </div>
+        )}
+
+        {job.responsibilities && (
+          <div className="bg-white rounded-lg border p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-3">Key Responsibilities</h3>
+            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">{job.responsibilities}</div>
+          </div>
+        )}
+
+        {job.qualifications && (
+          <div className="bg-white rounded-lg border p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-3">Minimum Qualifications</h3>
+            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">{job.qualifications}</div>
+          </div>
+        )}
+
+        {job.closing_statement && (
+          <div className="bg-white rounded-lg border p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-3">Additional Information</h3>
+            <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">{job.closing_statement}</div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

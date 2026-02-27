@@ -1,16 +1,33 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, type TeamMember } from '../api/client';
 import DashboardLayout from '../components/layout/DashboardLayout';
 
 export default function ReqForm() {
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
+  const [jobCode, setJobCode] = useState('');
   const [level, setLevel] = useState('');
   const [department, setDepartment] = useState('');
-  const [targetHires, setTargetHires] = useState(1);
+  const [hiringManagerId, setHiringManagerId] = useState('');
+  const [recruiterId, setRecruiterId] = useState('');
+  const [managers, setManagers] = useState<TeamMember[]>([]);
+  const [recruiterOptions, setRecruiterOptions] = useState<TeamMember[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    api.team.list().then(data => {
+      const eligible = data.members.filter(m =>
+        m.role === 'hiring_manager' || m.role === 'admin' || m.role === 'super_admin'
+      );
+      setManagers(eligible);
+      const eligibleRecruiters = data.members.filter(m =>
+        m.role === 'recruiter' || m.role === 'admin' || m.role === 'super_admin'
+      );
+      setRecruiterOptions(eligibleRecruiters);
+    });
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -19,9 +36,12 @@ export default function ReqForm() {
     try {
       const req = await api.reqs.create({
         title,
+        jobCode: jobCode || undefined,
         level: level || undefined,
         department: department || undefined,
-        targetHires,
+        targetHires: 1,
+        hiringManagerId: hiringManagerId || undefined,
+        recruiterId: recruiterId || undefined,
       });
       navigate(`/reqs/${req.id}`);
     } catch (err: any) {
@@ -53,6 +73,18 @@ export default function ReqForm() {
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Job Code *</label>
+            <input
+              type="text"
+              value={jobCode}
+              onChange={e => setJobCode(e.target.value)}
+              required
+              placeholder="e.g., SWE, MLE, SYS"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Level</label>
@@ -77,14 +109,31 @@ export default function ReqForm() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Target Hires</label>
-            <input
-              type="number"
-              value={targetHires}
-              onChange={e => setTargetHires(parseInt(e.target.value) || 1)}
-              min={1}
-              className="w-32 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+            <label className="block text-sm font-medium text-gray-700 mb-1">Hiring Manager</label>
+            <select
+              value={hiringManagerId}
+              onChange={e => setHiringManagerId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Assign to me</option>
+              {managers.map(m => (
+                <option key={m.id} value={m.id}>{m.name} ({m.role.replace('_', ' ')})</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Recruiter</label>
+            <select
+              value={recruiterId}
+              onChange={e => setRecruiterId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">None</option>
+              {recruiterOptions.map(m => (
+                <option key={m.id} value={m.id}>{m.name} ({m.role.replace('_', ' ')})</option>
+              ))}
+            </select>
           </div>
 
           <div className="flex gap-3 pt-2">

@@ -21,7 +21,7 @@ func TestCreateJob(t *testing.T) {
 	router := setupCRUDRouter(srv)
 	cookie := signupAndGetCookie(t, router, "job@test.com", "joborg")
 
-	body := `{"title":"Go Developer","description":"Write Go microservices","location":"Remote","department":"Engineering","salary":"$120k-150k"}`
+	body := `{"title":"Go Developer","teamDetails":"Write Go microservices","location":"Remote","department":"Engineering","salary":"$120k-150k"}`
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, authedRequest("POST", "/api/jobs", body, cookie))
 
@@ -50,7 +50,7 @@ func TestCreateJob_MissingFields(t *testing.T) {
 	router := setupCRUDRouter(srv)
 	cookie := signupAndGetCookie(t, router, "jobmissing@test.com", "jobmissingorg")
 
-	body := `{"title":"No Description"}`
+	body := `{"teamDetails":"no title provided"}`
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, authedRequest("POST", "/api/jobs", body, cookie))
 
@@ -71,8 +71,8 @@ func TestListJobs(t *testing.T) {
 	cookie := signupAndGetCookie(t, router, "listjob@test.com", "listjoborg")
 
 	// Create 2 jobs
-	router.ServeHTTP(httptest.NewRecorder(), authedRequest("POST", "/api/jobs", `{"title":"Job 1","description":"Desc 1"}`, cookie))
-	router.ServeHTTP(httptest.NewRecorder(), authedRequest("POST", "/api/jobs", `{"title":"Job 2","description":"Desc 2"}`, cookie))
+	router.ServeHTTP(httptest.NewRecorder(), authedRequest("POST", "/api/jobs", `{"title":"Job 1","teamDetails":"Desc 1"}`, cookie))
+	router.ServeHTTP(httptest.NewRecorder(), authedRequest("POST", "/api/jobs", `{"title":"Job 2","teamDetails":"Desc 2"}`, cookie))
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, authedRequest("GET", "/api/jobs", "", cookie))
@@ -101,14 +101,14 @@ func TestUpdateJobStatus(t *testing.T) {
 
 	// Create job
 	w1 := httptest.NewRecorder()
-	router.ServeHTTP(w1, authedRequest("POST", "/api/jobs", `{"title":"Draft Job","description":"Will be published"}`, cookie))
+	router.ServeHTTP(w1, authedRequest("POST", "/api/jobs", `{"title":"Draft Job","teamDetails":"Will be published"}`, cookie))
 	var job map[string]interface{}
 	json.NewDecoder(w1.Body).Decode(&job)
 	jobID := job["id"].(string)
 
 	// Update to open
 	w2 := httptest.NewRecorder()
-	router.ServeHTTP(w2, authedRequest("PUT", "/api/jobs/"+jobID, `{"title":"Draft Job","description":"Will be published","status":"open"}`, cookie))
+	router.ServeHTTP(w2, authedRequest("PUT", "/api/jobs/"+jobID, `{"title":"Draft Job","teamDetails":"Will be published","status":"open"}`, cookie))
 
 	if w2.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w2.Code, w2.Body.String())
@@ -134,7 +134,7 @@ func TestJobOrgIsolation(t *testing.T) {
 	// Org A creates a job
 	cookieA := signupAndGetCookie(t, router, "jobA@test.com", "jobisoorga")
 	w1 := httptest.NewRecorder()
-	router.ServeHTTP(w1, authedRequest("POST", "/api/jobs", `{"title":"OrgA Job","description":"Secret job"}`, cookieA))
+	router.ServeHTTP(w1, authedRequest("POST", "/api/jobs", `{"title":"OrgA Job","teamDetails":"Secret job"}`, cookieA))
 	var jobA map[string]interface{}
 	json.NewDecoder(w1.Body).Decode(&jobA)
 	jobAID := jobA["id"].(string)

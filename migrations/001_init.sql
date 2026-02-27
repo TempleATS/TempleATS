@@ -8,6 +8,8 @@ CREATE TABLE organizations (
     slug        TEXT NOT NULL UNIQUE,
     logo_url    TEXT,
     website     TEXT,
+    default_company_blurb      TEXT NOT NULL DEFAULT '',
+    default_closing_statement  TEXT NOT NULL DEFAULT '',
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -18,7 +20,7 @@ CREATE TABLE users (
     email           TEXT NOT NULL UNIQUE,
     name            TEXT NOT NULL,
     password_hash   TEXT NOT NULL,
-    role            TEXT NOT NULL DEFAULT 'recruiter',
+    role            TEXT NOT NULL DEFAULT 'interviewer',
     organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -29,6 +31,7 @@ CREATE INDEX idx_users_org ON users(organization_id);
 CREATE TABLE requisitions (
     id                TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     title             TEXT NOT NULL,
+    job_code          TEXT,              -- e.g., SWE, MLE, SYS
     level             TEXT,
     department        TEXT,
     target_hires      INT NOT NULL DEFAULT 1,
@@ -47,7 +50,11 @@ CREATE INDEX idx_reqs_status ON requisitions(status);
 CREATE TABLE jobs (
     id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     title           TEXT NOT NULL,
-    description     TEXT NOT NULL,
+    company_blurb     TEXT NOT NULL DEFAULT '',
+    team_details      TEXT NOT NULL DEFAULT '',
+    responsibilities  TEXT NOT NULL DEFAULT '',
+    qualifications    TEXT NOT NULL DEFAULT '',
+    closing_statement TEXT NOT NULL DEFAULT '',
     location        TEXT,
     department      TEXT,
     salary          TEXT,
@@ -112,11 +119,22 @@ CREATE TABLE notes (
 );
 CREATE INDEX idx_notes_app ON notes(application_id);
 
+-- Interview assignments (per-application)
+CREATE TABLE interview_assignments (
+    id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    application_id  TEXT NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+    interviewer_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(application_id, interviewer_id)
+);
+CREATE INDEX idx_interview_assignments_app ON interview_assignments(application_id);
+CREATE INDEX idx_interview_assignments_user ON interview_assignments(interviewer_id);
+
 -- Invitations (for adding team members)
 CREATE TABLE invitations (
     id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
     email           TEXT NOT NULL,
-    role            TEXT NOT NULL DEFAULT 'recruiter',
+    role            TEXT NOT NULL DEFAULT 'interviewer',
     token           TEXT NOT NULL UNIQUE DEFAULT gen_random_uuid()::text,
     organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     expires_at      TIMESTAMPTZ NOT NULL,

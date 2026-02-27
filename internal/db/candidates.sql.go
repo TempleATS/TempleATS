@@ -12,7 +12,7 @@ import (
 )
 
 const getCandidateByID = `-- name: GetCandidateByID :one
-SELECT id, name, email, phone, resume_url, resume_filename, organization_id, created_at, updated_at FROM candidates WHERE id = $1 AND organization_id = $2
+SELECT id, name, email, phone, resume_url, resume_filename, company, linkedin_url, organization_id, created_at, updated_at FROM candidates WHERE id = $1 AND organization_id = $2
 `
 
 type GetCandidateByIDParams struct {
@@ -30,6 +30,8 @@ func (q *Queries) GetCandidateByID(ctx context.Context, arg GetCandidateByIDPara
 		&i.Phone,
 		&i.ResumeUrl,
 		&i.ResumeFilename,
+		&i.Company,
+		&i.LinkedinUrl,
 		&i.OrganizationID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -37,8 +39,99 @@ func (q *Queries) GetCandidateByID(ctx context.Context, arg GetCandidateByIDPara
 	return i, err
 }
 
+const listCandidatesByHiringManager = `-- name: ListCandidatesByHiringManager :many
+SELECT DISTINCT c.id, c.name, c.email, c.phone, c.resume_url, c.resume_filename, c.company, c.linkedin_url, c.organization_id, c.created_at, c.updated_at FROM candidates c
+JOIN applications a ON a.candidate_id = c.id
+JOIN jobs j ON a.job_id = j.id
+JOIN requisitions r ON j.requisition_id = r.id
+WHERE c.organization_id = $1 AND r.hiring_manager_id = $2
+ORDER BY c.created_at DESC
+`
+
+type ListCandidatesByHiringManagerParams struct {
+	OrganizationID  string      `json:"organization_id"`
+	HiringManagerID pgtype.Text `json:"hiring_manager_id"`
+}
+
+func (q *Queries) ListCandidatesByHiringManager(ctx context.Context, arg ListCandidatesByHiringManagerParams) ([]Candidate, error) {
+	rows, err := q.db.Query(ctx, listCandidatesByHiringManager, arg.OrganizationID, arg.HiringManagerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Candidate{}
+	for rows.Next() {
+		var i Candidate
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Phone,
+			&i.ResumeUrl,
+			&i.ResumeFilename,
+			&i.Company,
+			&i.LinkedinUrl,
+			&i.OrganizationID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCandidatesByInterviewer = `-- name: ListCandidatesByInterviewer :many
+SELECT DISTINCT c.id, c.name, c.email, c.phone, c.resume_url, c.resume_filename, c.company, c.linkedin_url, c.organization_id, c.created_at, c.updated_at FROM candidates c
+JOIN applications a ON a.candidate_id = c.id
+JOIN interview_assignments ia ON ia.application_id = a.id
+WHERE c.organization_id = $1 AND ia.interviewer_id = $2
+ORDER BY c.created_at DESC
+`
+
+type ListCandidatesByInterviewerParams struct {
+	OrganizationID string `json:"organization_id"`
+	InterviewerID  string `json:"interviewer_id"`
+}
+
+func (q *Queries) ListCandidatesByInterviewer(ctx context.Context, arg ListCandidatesByInterviewerParams) ([]Candidate, error) {
+	rows, err := q.db.Query(ctx, listCandidatesByInterviewer, arg.OrganizationID, arg.InterviewerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Candidate{}
+	for rows.Next() {
+		var i Candidate
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Phone,
+			&i.ResumeUrl,
+			&i.ResumeFilename,
+			&i.Company,
+			&i.LinkedinUrl,
+			&i.OrganizationID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCandidatesByOrg = `-- name: ListCandidatesByOrg :many
-SELECT id, name, email, phone, resume_url, resume_filename, organization_id, created_at, updated_at FROM candidates WHERE organization_id = $1 ORDER BY created_at DESC
+SELECT id, name, email, phone, resume_url, resume_filename, company, linkedin_url, organization_id, created_at, updated_at FROM candidates WHERE organization_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListCandidatesByOrg(ctx context.Context, organizationID string) ([]Candidate, error) {
@@ -57,6 +150,8 @@ func (q *Queries) ListCandidatesByOrg(ctx context.Context, organizationID string
 			&i.Phone,
 			&i.ResumeUrl,
 			&i.ResumeFilename,
+			&i.Company,
+			&i.LinkedinUrl,
 			&i.OrganizationID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -71,8 +166,235 @@ func (q *Queries) ListCandidatesByOrg(ctx context.Context, organizationID string
 	return items, nil
 }
 
+const listCandidatesWithAllApps = `-- name: ListCandidatesWithAllApps :many
+SELECT c.id, c.name, c.email, c.phone, c.resume_url, c.resume_filename, c.company, c.created_at,
+       COALESCE(a.id, '') AS app_id, COALESCE(a.stage, '') AS app_stage,
+       COALESCE(j.title, '') AS job_title, a.created_at AS applied_at
+FROM candidates c
+LEFT JOIN applications a ON a.candidate_id = c.id
+LEFT JOIN jobs j ON a.job_id = j.id
+WHERE c.organization_id = $1
+ORDER BY c.name ASC, a.created_at DESC
+`
+
+type ListCandidatesWithAllAppsRow struct {
+	ID             string             `json:"id"`
+	Name           string             `json:"name"`
+	Email          string             `json:"email"`
+	Phone          pgtype.Text        `json:"phone"`
+	ResumeUrl      pgtype.Text        `json:"resume_url"`
+	ResumeFilename pgtype.Text        `json:"resume_filename"`
+	Company        pgtype.Text        `json:"company"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	AppID          string             `json:"app_id"`
+	AppStage       string             `json:"app_stage"`
+	JobTitle       string             `json:"job_title"`
+	AppliedAt      pgtype.Timestamptz `json:"applied_at"`
+}
+
+func (q *Queries) ListCandidatesWithAllApps(ctx context.Context, organizationID string) ([]ListCandidatesWithAllAppsRow, error) {
+	rows, err := q.db.Query(ctx, listCandidatesWithAllApps, organizationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCandidatesWithAllAppsRow{}
+	for rows.Next() {
+		var i ListCandidatesWithAllAppsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Phone,
+			&i.ResumeUrl,
+			&i.ResumeFilename,
+			&i.Company,
+			&i.CreatedAt,
+			&i.AppID,
+			&i.AppStage,
+			&i.JobTitle,
+			&i.AppliedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCandidatesWithLatestAppByHM = `-- name: ListCandidatesWithLatestAppByHM :many
+SELECT c.id, c.name, c.email, c.phone, c.resume_url, c.resume_filename, c.company, c.created_at,
+       a.id AS app_id, a.stage AS app_stage, j.title AS job_title, a.created_at AS applied_at
+FROM candidates c
+JOIN applications a ON a.candidate_id = c.id
+JOIN jobs j ON a.job_id = j.id
+JOIN requisitions r ON j.requisition_id = r.id
+WHERE c.organization_id = $1 AND r.hiring_manager_id = $2
+ORDER BY a.created_at DESC
+`
+
+type ListCandidatesWithLatestAppByHMParams struct {
+	OrganizationID  string      `json:"organization_id"`
+	HiringManagerID pgtype.Text `json:"hiring_manager_id"`
+}
+
+type ListCandidatesWithLatestAppByHMRow struct {
+	ID             string             `json:"id"`
+	Name           string             `json:"name"`
+	Email          string             `json:"email"`
+	Phone          pgtype.Text        `json:"phone"`
+	ResumeUrl      pgtype.Text        `json:"resume_url"`
+	ResumeFilename pgtype.Text        `json:"resume_filename"`
+	Company        pgtype.Text        `json:"company"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	AppID          string             `json:"app_id"`
+	AppStage       string             `json:"app_stage"`
+	JobTitle       string             `json:"job_title"`
+	AppliedAt      pgtype.Timestamptz `json:"applied_at"`
+}
+
+func (q *Queries) ListCandidatesWithLatestAppByHM(ctx context.Context, arg ListCandidatesWithLatestAppByHMParams) ([]ListCandidatesWithLatestAppByHMRow, error) {
+	rows, err := q.db.Query(ctx, listCandidatesWithLatestAppByHM, arg.OrganizationID, arg.HiringManagerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCandidatesWithLatestAppByHMRow{}
+	for rows.Next() {
+		var i ListCandidatesWithLatestAppByHMRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Phone,
+			&i.ResumeUrl,
+			&i.ResumeFilename,
+			&i.Company,
+			&i.CreatedAt,
+			&i.AppID,
+			&i.AppStage,
+			&i.JobTitle,
+			&i.AppliedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCandidatesWithLatestAppByInterviewer = `-- name: ListCandidatesWithLatestAppByInterviewer :many
+SELECT c.id, c.name, c.email, c.phone, c.resume_url, c.resume_filename, c.company, c.created_at,
+       a.id AS app_id, a.stage AS app_stage, j.title AS job_title, a.created_at AS applied_at
+FROM candidates c
+JOIN applications a ON a.candidate_id = c.id
+JOIN interview_assignments ia ON ia.application_id = a.id
+JOIN jobs j ON a.job_id = j.id
+WHERE c.organization_id = $1 AND ia.interviewer_id = $2
+ORDER BY a.created_at DESC
+`
+
+type ListCandidatesWithLatestAppByInterviewerParams struct {
+	OrganizationID string `json:"organization_id"`
+	InterviewerID  string `json:"interviewer_id"`
+}
+
+type ListCandidatesWithLatestAppByInterviewerRow struct {
+	ID             string             `json:"id"`
+	Name           string             `json:"name"`
+	Email          string             `json:"email"`
+	Phone          pgtype.Text        `json:"phone"`
+	ResumeUrl      pgtype.Text        `json:"resume_url"`
+	ResumeFilename pgtype.Text        `json:"resume_filename"`
+	Company        pgtype.Text        `json:"company"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	AppID          string             `json:"app_id"`
+	AppStage       string             `json:"app_stage"`
+	JobTitle       string             `json:"job_title"`
+	AppliedAt      pgtype.Timestamptz `json:"applied_at"`
+}
+
+func (q *Queries) ListCandidatesWithLatestAppByInterviewer(ctx context.Context, arg ListCandidatesWithLatestAppByInterviewerParams) ([]ListCandidatesWithLatestAppByInterviewerRow, error) {
+	rows, err := q.db.Query(ctx, listCandidatesWithLatestAppByInterviewer, arg.OrganizationID, arg.InterviewerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListCandidatesWithLatestAppByInterviewerRow{}
+	for rows.Next() {
+		var i ListCandidatesWithLatestAppByInterviewerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Phone,
+			&i.ResumeUrl,
+			&i.ResumeFilename,
+			&i.Company,
+			&i.CreatedAt,
+			&i.AppID,
+			&i.AppStage,
+			&i.JobTitle,
+			&i.AppliedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const updateCandidateContact = `-- name: UpdateCandidateContact :one
+UPDATE candidates
+SET email = $3, phone = $4, linkedin_url = $5, updated_at = now()
+WHERE id = $1 AND organization_id = $2
+RETURNING id, name, email, phone, resume_url, resume_filename, company, linkedin_url, organization_id, created_at, updated_at
+`
+
+type UpdateCandidateContactParams struct {
+	ID             string      `json:"id"`
+	OrganizationID string      `json:"organization_id"`
+	Email          string      `json:"email"`
+	Phone          pgtype.Text `json:"phone"`
+	LinkedinUrl    pgtype.Text `json:"linkedin_url"`
+}
+
+func (q *Queries) UpdateCandidateContact(ctx context.Context, arg UpdateCandidateContactParams) (Candidate, error) {
+	row := q.db.QueryRow(ctx, updateCandidateContact,
+		arg.ID,
+		arg.OrganizationID,
+		arg.Email,
+		arg.Phone,
+		arg.LinkedinUrl,
+	)
+	var i Candidate
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Phone,
+		&i.ResumeUrl,
+		&i.ResumeFilename,
+		&i.Company,
+		&i.LinkedinUrl,
+		&i.OrganizationID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const searchCandidates = `-- name: SearchCandidates :many
-SELECT id, name, email, phone, resume_url, resume_filename, organization_id, created_at, updated_at FROM candidates
+SELECT id, name, email, phone, resume_url, resume_filename, company, linkedin_url, organization_id, created_at, updated_at FROM candidates
 WHERE organization_id = $1
   AND (name ILIKE '%' || $2 || '%' OR email ILIKE '%' || $2 || '%')
 ORDER BY created_at DESC
@@ -99,9 +421,76 @@ func (q *Queries) SearchCandidates(ctx context.Context, arg SearchCandidatesPara
 			&i.Phone,
 			&i.ResumeUrl,
 			&i.ResumeFilename,
+			&i.Company,
+			&i.LinkedinUrl,
 			&i.OrganizationID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchCandidatesWithAllApps = `-- name: SearchCandidatesWithAllApps :many
+SELECT c.id, c.name, c.email, c.phone, c.resume_url, c.resume_filename, c.company, c.created_at,
+       COALESCE(a.id, '') AS app_id, COALESCE(a.stage, '') AS app_stage,
+       COALESCE(j.title, '') AS job_title, a.created_at AS applied_at
+FROM candidates c
+LEFT JOIN applications a ON a.candidate_id = c.id
+LEFT JOIN jobs j ON a.job_id = j.id
+WHERE c.organization_id = $1
+  AND (c.name ILIKE '%' || $2 || '%' OR c.email ILIKE '%' || $2 || '%')
+ORDER BY c.name ASC, a.created_at DESC
+`
+
+type SearchCandidatesWithAllAppsParams struct {
+	OrganizationID string      `json:"organization_id"`
+	Column2        pgtype.Text `json:"column_2"`
+}
+
+type SearchCandidatesWithAllAppsRow struct {
+	ID             string             `json:"id"`
+	Name           string             `json:"name"`
+	Email          string             `json:"email"`
+	Phone          pgtype.Text        `json:"phone"`
+	ResumeUrl      pgtype.Text        `json:"resume_url"`
+	ResumeFilename pgtype.Text        `json:"resume_filename"`
+	Company        pgtype.Text        `json:"company"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	AppID          string             `json:"app_id"`
+	AppStage       string             `json:"app_stage"`
+	JobTitle       string             `json:"job_title"`
+	AppliedAt      pgtype.Timestamptz `json:"applied_at"`
+}
+
+func (q *Queries) SearchCandidatesWithAllApps(ctx context.Context, arg SearchCandidatesWithAllAppsParams) ([]SearchCandidatesWithAllAppsRow, error) {
+	rows, err := q.db.Query(ctx, searchCandidatesWithAllApps, arg.OrganizationID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SearchCandidatesWithAllAppsRow{}
+	for rows.Next() {
+		var i SearchCandidatesWithAllAppsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.Phone,
+			&i.ResumeUrl,
+			&i.ResumeFilename,
+			&i.Company,
+			&i.CreatedAt,
+			&i.AppID,
+			&i.AppStage,
+			&i.JobTitle,
+			&i.AppliedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -121,7 +510,7 @@ SET name = EXCLUDED.name, phone = EXCLUDED.phone,
     resume_url = COALESCE(EXCLUDED.resume_url, candidates.resume_url),
     resume_filename = COALESCE(EXCLUDED.resume_filename, candidates.resume_filename),
     updated_at = now()
-RETURNING id, name, email, phone, resume_url, resume_filename, organization_id, created_at, updated_at
+RETURNING id, name, email, phone, resume_url, resume_filename, company, linkedin_url, organization_id, created_at, updated_at
 `
 
 type UpsertCandidateParams struct {
@@ -150,6 +539,45 @@ func (q *Queries) UpsertCandidate(ctx context.Context, arg UpsertCandidateParams
 		&i.Phone,
 		&i.ResumeUrl,
 		&i.ResumeFilename,
+		&i.Company,
+		&i.LinkedinUrl,
+		&i.OrganizationID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateCandidateResume = `-- name: UpdateCandidateResume :one
+UPDATE candidates SET resume_url = $3, resume_filename = $4, updated_at = now()
+WHERE id = $1 AND organization_id = $2
+RETURNING id, name, email, phone, resume_url, resume_filename, company, linkedin_url, organization_id, created_at, updated_at
+`
+
+type UpdateCandidateResumeParams struct {
+	ID             string      `json:"id"`
+	OrganizationID string      `json:"organization_id"`
+	ResumeUrl      pgtype.Text `json:"resume_url"`
+	ResumeFilename pgtype.Text `json:"resume_filename"`
+}
+
+func (q *Queries) UpdateCandidateResume(ctx context.Context, arg UpdateCandidateResumeParams) (Candidate, error) {
+	row := q.db.QueryRow(ctx, updateCandidateResume,
+		arg.ID,
+		arg.OrganizationID,
+		arg.ResumeUrl,
+		arg.ResumeFilename,
+	)
+	var i Candidate
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.Phone,
+		&i.ResumeUrl,
+		&i.ResumeFilename,
+		&i.Company,
+		&i.LinkedinUrl,
 		&i.OrganizationID,
 		&i.CreatedAt,
 		&i.UpdatedAt,

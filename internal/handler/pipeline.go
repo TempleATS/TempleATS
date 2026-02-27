@@ -1,34 +1,76 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/temple-ats/TempleATS/internal/db"
+	"github.com/temple-ats/TempleATS/internal/email"
 	mw "github.com/temple-ats/TempleATS/internal/middleware"
 )
 
 var validStages = map[string]bool{
-	"applied":   true,
-	"screening": true,
-	"interview": true,
-	"offer":     true,
-	"hired":     true,
-	"rejected":  true,
+	"applied":          true,
+	"hr_screen":        true,
+	"hm_review":        true,
+	"first_interview":  true,
+	"final_interview":  true,
+	"offer":            true,
+	"rejected":         true,
 }
 
 // GetPipeline returns applications grouped by stage for a job.
 func (s *Server) GetPipeline(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobId")
 	orgID := mw.GetOrgID(r.Context())
+	userID := mw.GetUserID(r.Context())
+	role := mw.GetRole(r.Context())
 	ctx := r.Context()
 
 	// Verify job belongs to this org
 	job, err := s.Queries.GetJobByID(ctx, db.GetJobByIDParams{ID: jobID, OrganizationID: orgID})
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})
+		return
+	}
+
+	// HM: verify they own this job's requisition
+	if role == "hiring_manager" {
+		if !job.RequisitionID.Valid {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			return
+		}
+		req, err := s.Queries.GetRequisitionByID(ctx, db.GetRequisitionByIDParams{
+			ID: job.RequisitionID.String, OrganizationID: orgID,
+		})
+		if err != nil || !req.HiringManagerID.Valid || req.HiringManagerID.String != userID {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			return
+		}
+	}
+
+	// Interviewer: only show their assigned applications
+	if role == "interviewer" {
+		apps, err := s.Queries.ListApplicationsByJobForInterviewer(ctx, db.ListApplicationsByJobForInterviewerParams{
+			JobID:         job.ID,
+			InterviewerID: userID,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list applications"})
+			return
+		}
+		stages := map[string][]db.ListApplicationsByJobForInterviewerRow{
+			"applied": {}, "hr_screen": {}, "hm_review": {}, "first_interview": {}, "final_interview": {},
+			"offer": {}, "rejected": {},
+		}
+		for _, app := range apps {
+			stages[app.Stage] = append(stages[app.Stage], app)
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"job": job, "stages": stages})
 		return
 	}
 
@@ -40,12 +82,8 @@ func (s *Server) GetPipeline(w http.ResponseWriter, r *http.Request) {
 
 	// Group by stage
 	stages := map[string][]db.ListApplicationsByJobRow{
-		"applied":   {},
-		"screening": {},
-		"interview": {},
-		"offer":     {},
-		"hired":     {},
-		"rejected":  {},
+		"applied": {}, "hm_review": {}, "first_interview": {}, "final_interview": {},
+		"offer": {}, "rejected": {},
 	}
 	for _, app := range apps {
 		stages[app.Stage] = append(stages[app.Stage], app)
@@ -64,10 +102,13 @@ type updateStageRequest struct {
 }
 
 // UpdateStage moves an application to a new stage.
+// Allowed: super_admin, admin, hiring_manager (for their jobs only).
+// Route-level middleware already blocks interviewer.
 func (s *Server) UpdateStage(w http.ResponseWriter, r *http.Request) {
 	appID := chi.URLParam(r, "appId")
 	orgID := mw.GetOrgID(r.Context())
 	userID := mw.GetUserID(r.Context())
+	role := mw.GetRole(r.Context())
 	ctx := r.Context()
 
 	var req updateStageRequest
@@ -98,7 +139,21 @@ func (s *Server) UpdateStage(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "application not found"})
 		return
 	}
-	_ = job
+
+	// HM: verify they own this job
+	if role == "hiring_manager" {
+		if !job.RequisitionID.Valid {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			return
+		}
+		reqObj, err := s.Queries.GetRequisitionByID(ctx, db.GetRequisitionByIDParams{
+			ID: job.RequisitionID.String, OrganizationID: orgID,
+		})
+		if err != nil || !reqObj.HiringManagerID.Valid || reqObj.HiringManagerID.String != userID {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "forbidden"})
+			return
+		}
+	}
 
 	tx, err := s.Pool.Begin(ctx)
 	if err != nil {
@@ -146,6 +201,43 @@ func (s *Server) UpdateStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send stage change email to candidate if template exists and is enabled
+	go func() {
+		bgCtx := context.Background()
+		tmpl, err := s.Queries.GetEmailTemplateByStage(bgCtx, db.GetEmailTemplateByStageParams{
+			OrganizationID: orgID,
+			Stage:          req.Stage,
+		})
+		if err != nil || !tmpl.Enabled {
+			return
+		}
+
+		appDetails, err := s.Queries.GetApplicationWithDetails(bgCtx, appID)
+		if err != nil {
+			log.Printf("[stage-email] failed to get app details: %v", err)
+			return
+		}
+
+		data := map[string]string{
+			"CandidateName": appDetails.CandidateName,
+			"JobTitle":      appDetails.JobTitle,
+			"CompanyName":   appDetails.OrgName,
+			"Stage":         req.Stage,
+		}
+		subject, _ := email.RenderTemplate(tmpl.Subject, data)
+		body, _ := email.RenderTemplate(tmpl.Body, data)
+
+		s.Email.SendAsync(orgID, email.SendParams{
+			To:            appDetails.CandidateEmail,
+			RecipientName: appDetails.CandidateName,
+			Subject:       subject,
+			Body:          body,
+			Type:          "stage_change",
+			ApplicationID: appID,
+			TriggeredByID: userID,
+		})
+	}()
+
 	writeJSON(w, http.StatusOK, updated)
 }
 
@@ -180,9 +272,16 @@ func (s *Server) GetApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	feedback, err := s.Queries.ListFeedbackByApplication(ctx, appID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list feedback"})
+		return
+	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"application": app,
 		"transitions": transitions,
 		"notes":       notes,
+		"feedback":    feedback,
 	})
 }

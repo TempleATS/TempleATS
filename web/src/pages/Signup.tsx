@@ -83,20 +83,21 @@ export default function Signup() {
           </div>
 
           <div>
-            <label htmlFor="orgName" className="block text-sm font-medium text-gray-700 mb-1">Organization name</label>
+            <label htmlFor="orgName" className="block text-sm font-medium text-gray-700 mb-1">Company name</label>
             <input
               id="orgName"
               type="text"
               value={orgName}
               onChange={e => handleOrgNameChange(e.target.value)}
               required
+              placeholder="e.g. Carrot Inc"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
 
           <div>
             <label htmlFor="orgSlug" className="block text-sm font-medium text-gray-700 mb-1">
-              Organization slug
+              Company slug
               <span className="text-gray-400 font-normal ml-1">(used in careers URL)</span>
             </label>
             <input

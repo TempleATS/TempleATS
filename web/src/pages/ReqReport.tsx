@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts';
-import { api, type ReqReport as ReqReportType } from '../api/client';
+import { api, type ReqReport as ReqReportType, type MetricSnapshot } from '../api/client';
 import DashboardLayout from '../components/layout/DashboardLayout';
 
 const STAGE_ORDER = ['applied', 'screening', 'interview', 'offer', 'hired', 'rejected'];
@@ -30,15 +30,61 @@ const REASON_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
+function pct(ratio: number | null | undefined): string {
+  if (ratio == null) return '--';
+  return `${(ratio * 100).toFixed(1)}%`;
+}
+
+function RatioCard({ label, ratio, color }: { label: string; ratio: number | null | undefined; color: string }) {
+  return (
+    <div className="bg-white rounded-lg border p-4 text-center">
+      <p className="text-sm text-gray-500 mb-1">{label}</p>
+      <p className={`text-2xl font-bold ${color}`}>{pct(ratio)}</p>
+    </div>
+  );
+}
+
 export default function ReqReport() {
   const { reqId } = useParams<{ reqId: string }>();
   const [data, setData] = useState<ReqReportType | null>(null);
   const [loading, setLoading] = useState(true);
+  const [snapshots, setSnapshots] = useState<MetricSnapshot[]>([]);
+  const [snapLabel, setSnapLabel] = useState('');
+  const [showSnapForm, setShowSnapForm] = useState(false);
+  const [savingSnap, setSavingSnap] = useState(false);
 
   useEffect(() => {
     if (!reqId) return;
-    api.reqs.report(reqId).then(setData).finally(() => setLoading(false));
+    Promise.all([
+      api.reqs.report(reqId).then(setData),
+      api.reqs.listSnapshots(reqId).then(setSnapshots),
+    ]).finally(() => setLoading(false));
   }, [reqId]);
+
+  const handleSaveSnapshot = async () => {
+    if (!reqId) return;
+    setSavingSnap(true);
+    try {
+      const snap = await api.reqs.createSnapshot(reqId, snapLabel || undefined);
+      setSnapshots(prev => [snap, ...prev]);
+      setSnapLabel('');
+      setShowSnapForm(false);
+    } catch {
+      // ignore
+    } finally {
+      setSavingSnap(false);
+    }
+  };
+
+  const handleDeleteSnapshot = async (snapId: string) => {
+    if (!reqId) return;
+    try {
+      await api.reqs.deleteSnapshot(reqId, snapId);
+      setSnapshots(prev => prev.filter(s => s.id !== snapId));
+    } catch {
+      // ignore
+    }
+  };
 
   if (loading || !data) {
     return <DashboardLayout><p className="text-gray-500">Loading report...</p></DashboardLayout>;
@@ -57,6 +103,9 @@ export default function ReqReport() {
     value: count,
   }));
 
+  // Compute conversion ratios from snapshots (latest) or from funnel data
+  const latestSnap = snapshots.length > 0 ? snapshots[0] : null;
+
   return (
     <DashboardLayout>
       <Link to={`/reqs/${reqId}`} className="text-blue-600 hover:underline text-sm mb-4 inline-block">
@@ -64,14 +113,14 @@ export default function ReqReport() {
       </Link>
       <h2 className="text-2xl font-semibold text-gray-900 mb-1">{req.title} - Report</h2>
       <p className="text-sm text-gray-500 mb-6">
-        {req.level ? `${req.level} · ` : ''}{req.department || 'No department'} · Status: {req.status}
+        {req.job_code ? `${req.job_code} · ` : ''}{req.level ? `${req.level} · ` : ''}{req.department || 'No department'} · Status: {req.status}
       </p>
 
-      {/* Fill Progress */}
+      {/* Summary Cards */}
       <div className="grid grid-cols-4 gap-4 mb-8">
         <div className="bg-white rounded-lg border p-4">
-          <p className="text-sm text-gray-500">Target Hires</p>
-          <p className="text-3xl font-bold text-gray-900">{fillProgress.target}</p>
+          <p className="text-sm text-gray-500">Attached JDs</p>
+          <p className="text-3xl font-bold text-gray-900">{byJob.length}</p>
         </div>
         <div className="bg-white rounded-lg border p-4">
           <p className="text-sm text-gray-500">Hired</p>
@@ -88,6 +137,18 @@ export default function ReqReport() {
           <p className="text-3xl font-bold text-red-500">{funnel.rejected || 0}</p>
         </div>
       </div>
+
+      {/* Conversion Ratios */}
+      {latestSnap && (
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Conversion Ratios (Throughput)</h3>
+          <div className="grid grid-cols-3 gap-4">
+            <RatioCard label="1st Interview → Final" ratio={latestSnap.ratio_first_to_final} color="text-purple-600" />
+            <RatioCard label="Final → Offer" ratio={latestSnap.ratio_final_to_offer} color="text-emerald-600" />
+            <RatioCard label="Offer → Hired" ratio={latestSnap.ratio_offer_to_hired} color="text-blue-600" />
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-6 mb-8">
         {/* Funnel Chart */}
@@ -150,7 +211,7 @@ export default function ReqReport() {
 
       {/* Per-Job Breakdown */}
       {byJob.length > 0 && (
-        <div className="bg-white rounded-lg border p-6">
+        <div className="bg-white rounded-lg border p-6 mb-8">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">By Job</h3>
           <table className="w-full">
             <thead className="bg-gray-50 border-b">
@@ -174,6 +235,84 @@ export default function ReqReport() {
           </table>
         </div>
       )}
+
+      {/* Snapshots */}
+      <div className="bg-white rounded-lg border p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900">Saved Snapshots</h3>
+          {!showSnapForm ? (
+            <button
+              onClick={() => setShowSnapForm(true)}
+              className="px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm font-medium"
+            >
+              Save Snapshot
+            </button>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={snapLabel}
+                onChange={e => setSnapLabel(e.target.value)}
+                placeholder="Label (optional)"
+                className="px-3 py-1.5 border border-gray-300 rounded-md text-sm w-48"
+              />
+              <button
+                onClick={handleSaveSnapshot}
+                disabled={savingSnap}
+                className="px-3 py-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 text-sm font-medium disabled:opacity-50"
+              >
+                {savingSnap ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => { setShowSnapForm(false); setSnapLabel(''); }}
+                className="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-md hover:bg-gray-200 text-sm"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+        </div>
+
+        {snapshots.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-6">No snapshots saved yet. Save one to track metrics over time.</p>
+        ) : (
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Label</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Apps</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Hired</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">1st→Final</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Final→Offer</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Offer→Hired</th>
+                <th className="text-right px-4 py-3 text-xs font-medium text-gray-500 uppercase"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {snapshots.map(snap => (
+                <tr key={snap.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-medium text-gray-900">{snap.label || '--'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{new Date(snap.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{snap.total_applications}</td>
+                  <td className="px-4 py-3 text-sm text-emerald-600 font-medium">{snap.funnel_hired}</td>
+                  <td className="px-4 py-3 text-sm text-purple-600 font-medium">{pct(snap.ratio_first_to_final)}</td>
+                  <td className="px-4 py-3 text-sm text-emerald-600 font-medium">{pct(snap.ratio_final_to_offer)}</td>
+                  <td className="px-4 py-3 text-sm text-blue-600 font-medium">{pct(snap.ratio_offer_to_hired)}</td>
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      onClick={() => handleDeleteSnapshot(snap.id)}
+                      className="text-red-500 hover:text-red-700 text-sm"
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </DashboardLayout>
   );
 }

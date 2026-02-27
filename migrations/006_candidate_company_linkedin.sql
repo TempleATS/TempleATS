@@ -1,0 +1,2 @@
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS company TEXT;
+ALTER TABLE candidates ADD COLUMN IF NOT EXISTS linkedin_url TEXT;

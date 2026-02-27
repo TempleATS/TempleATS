@@ -2,9 +2,15 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/temple-ats/TempleATS/internal/db"
 )
@@ -59,16 +65,68 @@ func (s *Server) CareersGetJob(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, job)
 }
 
+var allowedResumeExts = map[string]bool{
+	".pdf":  true,
+	".doc":  true,
+	".docx": true,
+}
+
+const maxResumeSize = 10 << 20 // 10 MB
+
 // CareersApply handles a public application submission.
+// Accepts either JSON or multipart/form-data (with resume file).
 func (s *Server) CareersApply(w http.ResponseWriter, r *http.Request) {
 	orgSlug := chi.URLParam(r, "orgSlug")
 	jobID := chi.URLParam(r, "jobId")
 	ctx := r.Context()
 
 	var req applyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
-		return
+
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "multipart/form-data") {
+		if err := r.ParseMultipartForm(maxResumeSize); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file too large (max 10MB)"})
+			return
+		}
+		req.Name = r.FormValue("name")
+		req.Email = r.FormValue("email")
+		req.Phone = r.FormValue("phone")
+
+		// Handle resume file
+		file, header, err := r.FormFile("resume")
+		if err == nil {
+			defer file.Close()
+
+			ext := strings.ToLower(filepath.Ext(header.Filename))
+			if !allowedResumeExts[ext] {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "resume must be PDF, DOC, or DOCX"})
+				return
+			}
+
+			savedName := fmt.Sprintf("%s%s", uuid.New().String(), ext)
+			destPath := filepath.Join(s.UploadDir, savedName)
+
+			dst, err := os.Create(destPath)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save resume"})
+				return
+			}
+			defer dst.Close()
+
+			if _, err := io.Copy(dst, file); err != nil {
+				os.Remove(destPath)
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save resume"})
+				return
+			}
+
+			req.ResumeURL = "/uploads/" + savedName
+			req.ResumeFilename = header.Filename
+		}
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+			return
+		}
 	}
 
 	if req.Name == "" || req.Email == "" {
@@ -130,9 +188,22 @@ func (s *Server) CareersApply(w http.ResponseWriter, r *http.Request) {
 		JobID:       jobID,
 	})
 	if err != nil {
-		// Likely duplicate application
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "you have already applied to this job"})
 		return
+	}
+
+	// Handle referral token
+	if refToken := r.URL.Query().Get("ref"); refToken != "" {
+		ref, err := qtx.GetReferralByToken(ctx, refToken)
+		if err == nil && ref.JobID == jobID && ref.OrganizationID == org.ID {
+			_ = qtx.SetApplicationReferral(ctx, application.ID, ref.ID)
+			_ = qtx.UpdateReferralApplication(ctx, db.UpdateReferralApplicationParams{
+				ID:            ref.ID,
+				CandidateName: pgtype.Text{String: req.Name, Valid: true},
+				CandidateID:   pgtype.Text{String: candidate.ID, Valid: true},
+				ApplicationID: pgtype.Text{String: application.ID, Valid: true},
+			})
+		}
 	}
 
 	// Record initial stage transition

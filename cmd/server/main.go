@@ -46,7 +46,15 @@ func main() {
 		log.Fatalf("failed to ping database: %v", err)
 	}
 
-	srv := handler.NewServer(pool)
+	uploadDir := os.Getenv("UPLOAD_DIR")
+	if uploadDir == "" {
+		uploadDir = "./uploads"
+	}
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		log.Fatalf("failed to create upload directory: %v", err)
+	}
+
+	srv := handler.NewServer(pool, uploadDir)
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
@@ -67,41 +75,116 @@ func main() {
 	r.Post("/api/auth/signup", srv.Signup)
 	r.Post("/api/auth/login", srv.Login)
 	r.Post("/api/auth/logout", srv.Logout)
+	r.Post("/api/auth/accept-invite", srv.AcceptInvitation)
 
 	// Public careers routes (no auth)
 	r.Get("/api/careers/{orgSlug}", srv.CareersListJobs)
 	r.Get("/api/careers/{orgSlug}/jobs/{jobId}", srv.CareersGetJob)
 	r.Post("/api/careers/{orgSlug}/jobs/{jobId}/apply", srv.CareersApply)
 
-	// Protected routes
+	// Public scheduling routes (no auth - candidate booking)
+	r.Get("/api/schedule/{token}", srv.GetPublicSchedule)
+	r.Post("/api/schedule/{token}/confirm", srv.ConfirmSchedule)
+
+	// Google OAuth callback (cookie-based auth, not middleware)
+	r.Get("/api/auth/google/callback", srv.GoogleAuthCallback)
+
+	// Protected routes - all authenticated users
 	r.Group(func(r chi.Router) {
 		r.Use(mw.RequireAuth)
 		r.Get("/api/auth/me", srv.Me)
 
-		// Requisitions
+		// Read endpoints (handler-level role filtering)
 		r.Get("/api/reqs", srv.ListRequisitions)
-		r.Post("/api/reqs", srv.CreateRequisition)
 		r.Get("/api/reqs/{reqId}", srv.GetRequisition)
-		r.Put("/api/reqs/{reqId}", srv.UpdateRequisition)
-		r.Post("/api/reqs/{reqId}/jobs", srv.AttachJobToRequisition)
-		r.Get("/api/reqs/{reqId}/report", srv.ReqReport)
-
-		// Jobs
 		r.Get("/api/jobs", srv.ListJobs)
-		r.Post("/api/jobs", srv.CreateJob)
 		r.Get("/api/jobs/{jobId}", srv.GetJob)
-		r.Put("/api/jobs/{jobId}", srv.UpdateJob)
 		r.Get("/api/jobs/{jobId}/pipeline", srv.GetPipeline)
-
-		// Applications
-		r.Get("/api/applications/{appId}", srv.GetApplication)
-		r.Put("/api/applications/{appId}/stage", srv.UpdateStage)
-		r.Post("/api/applications/{appId}/notes", srv.AddNote)
-
-		// Candidates
 		r.Get("/api/candidates", srv.ListCandidates)
 		r.Get("/api/candidates/{candidateId}", srv.GetCandidate)
+		r.Get("/api/candidates/{candidateId}/contacts", srv.ListCandidateContacts)
+		r.Get("/api/applications/{appId}", srv.GetApplication)
+		r.Post("/api/applications/{appId}/notes", srv.AddNote)
+		r.Get("/api/my-interviews", srv.MyInterviews)
+		r.Get("/api/applications/{appId}/interviewers", srv.ListInterviewers)
+		r.Get("/api/applications/{appId}/feedback", srv.ListFeedback)
+		r.Get("/api/applications/{appId}/notifications", srv.ListNotifications)
+		r.Get("/api/team", srv.ListTeam)
+		r.Get("/api/settings/defaults", srv.GetOrgDefaults)
+		r.Get("/api/auth/google/url", srv.GoogleAuthURL)
+		r.Get("/api/account/calendar", srv.GetCalendarConnectionHandler)
+		r.Delete("/api/account/calendar", srv.DisconnectCalendar)
+		r.Get("/api/applications/{appId}/schedules", srv.ListSchedules)
+		r.Get("/api/settings/email-templates", srv.GetEmailTemplates)
+		r.Get("/api/referrals", srv.ListReferrals)
+		r.Post("/api/referrals", srv.CreateReferral)
+		r.Post("/api/referrals/link", srv.CreateReferralLink)
+
+		// Write: super_admin + admin + recruiter + hiring_manager
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RequireRole("super_admin", "admin", "recruiter", "hiring_manager"))
+			r.Put("/api/applications/{appId}/stage", srv.UpdateStage)
+			r.Post("/api/applications/{appId}/interviewers", srv.AssignInterviewer)
+			r.Delete("/api/applications/{appId}/interviewers/{userId}", srv.RemoveInterviewer)
+		})
+
+		// Feedback: all roles including interviewer
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RequireRole("super_admin", "admin", "recruiter", "hiring_manager", "interviewer"))
+			r.Post("/api/applications/{appId}/feedback", srv.AddFeedback)
+			r.Put("/api/applications/{appId}/feedback/{feedbackId}", srv.UpdateFeedback)
+			r.Delete("/api/applications/{appId}/feedback/{feedbackId}", srv.DeleteFeedback)
+		})
+
+		// Write: super_admin + admin + recruiter
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RequireRole("super_admin", "admin", "recruiter"))
+			r.Put("/api/jobs/{jobId}", srv.UpdateJob)
+			r.Post("/api/candidates", srv.CreateCandidate)
+			r.Put("/api/candidates/{candidateId}", srv.UpdateCandidate)
+			r.Post("/api/candidates/{candidateId}/contacts", srv.AddCandidateContact)
+			r.Delete("/api/candidates/{candidateId}/contacts/{contactId}", srv.DeleteCandidateContact)
+			r.Post("/api/candidates/{candidateId}/resume", srv.UploadCandidateResume)
+			r.Post("/api/candidates/{candidateId}/applications", srv.AddCandidateToJob)
+			r.Post("/api/team/invite", srv.InviteUser)
+			r.Get("/api/reqs/{reqId}/report", srv.ReqReport)
+			r.Post("/api/reqs/{reqId}/snapshots", srv.CreateSnapshot)
+			r.Get("/api/reqs/{reqId}/snapshots", srv.ListSnapshots)
+			r.Delete("/api/reqs/{reqId}/snapshots/{snapId}", srv.DeleteSnapshot)
+			r.Get("/api/metrics/dashboard", srv.DashboardMetrics)
+			r.Post("/api/applications/{appId}/email", srv.SendCandidateEmail)
+			r.Post("/api/applications/{appId}/hiring-packet", srv.GenerateHiringPacket)
+			r.Post("/api/applications/{appId}/schedule", srv.CreateSchedule)
+			r.Post("/api/applications/{appId}/availability", srv.CheckAvailability)
+		})
+
+		// Write: super_admin + admin only
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RequireRole("super_admin", "admin"))
+			r.Post("/api/reqs", srv.CreateRequisition)
+			r.Put("/api/reqs/{reqId}", srv.UpdateRequisition)
+			r.Delete("/api/reqs/{reqId}", srv.DeleteRequisition)
+			r.Post("/api/reqs/{reqId}/jobs", srv.AttachJobToRequisition)
+			r.Post("/api/jobs", srv.CreateJob)
+			r.Put("/api/team/{userId}", srv.UpdateTeamMember)
+			r.Delete("/api/team/{userId}", srv.RemoveTeamMember)
+		})
+
+		// Write: super_admin only
+		r.Group(func(r chi.Router) {
+			r.Use(mw.RequireRole("super_admin"))
+			r.Put("/api/settings/defaults", srv.UpdateOrgDefaults)
+			r.Put("/api/settings/org-name", srv.UpdateOrgName)
+			r.Get("/api/settings/smtp", srv.GetSmtpSettings)
+			r.Put("/api/settings/smtp", srv.UpdateSmtpSettings)
+			r.Post("/api/settings/smtp/test", srv.TestSmtpSettings)
+			r.Put("/api/settings/email-templates", srv.UpdateEmailTemplate)
+		})
 	})
+
+	// Serve uploaded files
+	uploadsFS := http.FileServer(http.Dir(uploadDir))
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", uploadsFS))
 
 	// Serve React SPA for non-API routes
 	staticFS, err := fs.Sub(staticFiles, "static")

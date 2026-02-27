@@ -1,15 +1,30 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type Requisition } from '../api/client';
+import { api, type Requisition, type TeamMember } from '../api/client';
+import { useAuth } from '../hooks/use-auth';
 import DashboardLayout from '../components/layout/DashboardLayout';
 
 export default function Reqs() {
+  const { isAtLeast } = useAuth();
   const [reqs, setReqs] = useState<Requisition[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const canCreate = isAtLeast('admin');
 
   useEffect(() => {
-    api.reqs.list().then(setReqs).finally(() => setLoading(false));
+    Promise.all([
+      api.reqs.list(),
+      api.team.list(),
+    ]).then(([reqData, teamData]) => {
+      setReqs(reqData);
+      setMembers(teamData.members);
+    }).finally(() => setLoading(false));
   }, []);
+
+  const hmName = (id: string | null) => {
+    if (!id) return '-';
+    return members.find(m => m.id === id)?.name || '-';
+  };
 
   const statusColor = (status: string) => {
     switch (status) {
@@ -24,12 +39,14 @@ export default function Reqs() {
     <DashboardLayout>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-semibold text-gray-900">Requisitions</h2>
-        <Link
-          to="/reqs/new"
-          className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
-        >
-          Create Requisition
-        </Link>
+        {canCreate && (
+          <Link
+            to="/reqs/new"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium"
+          >
+            Create Requisition
+          </Link>
+        )}
       </div>
 
       {loading ? (
@@ -47,9 +64,9 @@ export default function Reqs() {
             <thead className="bg-gray-50 border-b">
               <tr>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Title</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Level</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Job Code</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Department</th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Target</th>
+                <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Hiring Manager</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="text-left px-4 py-3 text-xs font-medium text-gray-500 uppercase">Opened</th>
               </tr>
@@ -62,9 +79,9 @@ export default function Reqs() {
                       {req.title}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{req.level || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{req.job_code || '-'}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{req.department || '-'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{req.target_hires}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{hmName(req.hiring_manager_id)}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusColor(req.status)}`}>
                       {req.status}

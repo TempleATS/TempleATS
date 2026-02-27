@@ -14,7 +14,7 @@ import (
 const createOrganization = `-- name: CreateOrganization :one
 INSERT INTO organizations (name, slug)
 VALUES ($1, $2)
-RETURNING id, name, slug, logo_url, website, created_at, updated_at
+RETURNING id, name, slug, logo_url, website, default_company_blurb, default_closing_statement, created_at, updated_at
 `
 
 type CreateOrganizationParams struct {
@@ -31,14 +31,32 @@ func (q *Queries) CreateOrganization(ctx context.Context, arg CreateOrganization
 		&i.Slug,
 		&i.LogoUrl,
 		&i.Website,
+		&i.DefaultCompanyBlurb,
+		&i.DefaultClosingStatement,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
 	return i, err
 }
 
+const getOrgDefaults = `-- name: GetOrgDefaults :one
+SELECT default_company_blurb, default_closing_statement FROM organizations WHERE id = $1
+`
+
+type GetOrgDefaultsRow struct {
+	DefaultCompanyBlurb     string `json:"default_company_blurb"`
+	DefaultClosingStatement string `json:"default_closing_statement"`
+}
+
+func (q *Queries) GetOrgDefaults(ctx context.Context, id string) (GetOrgDefaultsRow, error) {
+	row := q.db.QueryRow(ctx, getOrgDefaults, id)
+	var i GetOrgDefaultsRow
+	err := row.Scan(&i.DefaultCompanyBlurb, &i.DefaultClosingStatement)
+	return i, err
+}
+
 const getOrganizationByID = `-- name: GetOrganizationByID :one
-SELECT id, name, slug, logo_url, website, created_at, updated_at FROM organizations WHERE id = $1
+SELECT id, name, slug, logo_url, website, default_company_blurb, default_closing_statement, created_at, updated_at FROM organizations WHERE id = $1
 `
 
 func (q *Queries) GetOrganizationByID(ctx context.Context, id string) (Organization, error) {
@@ -50,6 +68,8 @@ func (q *Queries) GetOrganizationByID(ctx context.Context, id string) (Organizat
 		&i.Slug,
 		&i.LogoUrl,
 		&i.Website,
+		&i.DefaultCompanyBlurb,
+		&i.DefaultClosingStatement,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -57,7 +77,7 @@ func (q *Queries) GetOrganizationByID(ctx context.Context, id string) (Organizat
 }
 
 const getOrganizationBySlug = `-- name: GetOrganizationBySlug :one
-SELECT id, name, slug, logo_url, website, created_at, updated_at FROM organizations WHERE slug = $1
+SELECT id, name, slug, logo_url, website, default_company_blurb, default_closing_statement, created_at, updated_at FROM organizations WHERE slug = $1
 `
 
 func (q *Queries) GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error) {
@@ -69,6 +89,38 @@ func (q *Queries) GetOrganizationBySlug(ctx context.Context, slug string) (Organ
 		&i.Slug,
 		&i.LogoUrl,
 		&i.Website,
+		&i.DefaultCompanyBlurb,
+		&i.DefaultClosingStatement,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateOrgDefaults = `-- name: UpdateOrgDefaults :one
+UPDATE organizations
+SET default_company_blurb = $2, default_closing_statement = $3, updated_at = now()
+WHERE id = $1
+RETURNING id, name, slug, logo_url, website, default_company_blurb, default_closing_statement, created_at, updated_at
+`
+
+type UpdateOrgDefaultsParams struct {
+	ID                      string `json:"id"`
+	DefaultCompanyBlurb     string `json:"default_company_blurb"`
+	DefaultClosingStatement string `json:"default_closing_statement"`
+}
+
+func (q *Queries) UpdateOrgDefaults(ctx context.Context, arg UpdateOrgDefaultsParams) (Organization, error) {
+	row := q.db.QueryRow(ctx, updateOrgDefaults, arg.ID, arg.DefaultCompanyBlurb, arg.DefaultClosingStatement)
+	var i Organization
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Slug,
+		&i.LogoUrl,
+		&i.Website,
+		&i.DefaultCompanyBlurb,
+		&i.DefaultClosingStatement,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -79,7 +131,7 @@ const updateOrganization = `-- name: UpdateOrganization :one
 UPDATE organizations
 SET name = $2, slug = $3, logo_url = $4, website = $5, updated_at = now()
 WHERE id = $1
-RETURNING id, name, slug, logo_url, website, created_at, updated_at
+RETURNING id, name, slug, logo_url, website, default_company_blurb, default_closing_statement, created_at, updated_at
 `
 
 type UpdateOrganizationParams struct {
@@ -105,6 +157,8 @@ func (q *Queries) UpdateOrganization(ctx context.Context, arg UpdateOrganization
 		&i.Slug,
 		&i.LogoUrl,
 		&i.Website,
+		&i.DefaultCompanyBlurb,
+		&i.DefaultClosingStatement,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

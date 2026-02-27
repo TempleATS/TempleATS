@@ -2,8 +2,14 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { api, type CareerJob } from '../../api/client';
 
-function pgText(val: { String: string; Valid: boolean } | null): string | null {
-  return val?.Valid ? val.String : null;
+function pgText(val: unknown): string | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'string') return val || null;
+  if (typeof val === 'object' && val !== null && 'Valid' in val) {
+    const t = val as { String: string; Valid: boolean };
+    return t.Valid ? t.String : null;
+  }
+  return null;
 }
 
 export default function CareerJobDetail() {
@@ -59,12 +65,43 @@ export default function CareerJobDetail() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-lg border p-8">
-          <div className="prose max-w-none whitespace-pre-wrap text-gray-700">
-            {job.description}
-          </div>
+        <div className="bg-white rounded-lg border p-8 space-y-6">
+          {job.company_blurb && (
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">About the Company</h2>
+              <div className="prose max-w-none whitespace-pre-wrap text-gray-700">{job.company_blurb}</div>
+            </div>
+          )}
 
-          <div className="mt-8 pt-6 border-t">
+          {job.team_details && (
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">The Team</h2>
+              <div className="prose max-w-none whitespace-pre-wrap text-gray-700">{job.team_details}</div>
+            </div>
+          )}
+
+          {job.responsibilities && (
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Key Responsibilities</h2>
+              <div className="prose max-w-none whitespace-pre-wrap text-gray-700">{job.responsibilities}</div>
+            </div>
+          )}
+
+          {job.qualifications && (
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Minimum Qualifications</h2>
+              <div className="prose max-w-none whitespace-pre-wrap text-gray-700">{job.qualifications}</div>
+            </div>
+          )}
+
+          {job.closing_statement && (
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Additional Information</h2>
+              <div className="prose max-w-none whitespace-pre-wrap text-gray-700">{job.closing_statement}</div>
+            </div>
+          )}
+
+          <div className="pt-6 border-t">
             <Link
               to={`/careers/${orgSlug}/jobs/${job.id}/apply`}
               className="inline-block px-6 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 font-medium"

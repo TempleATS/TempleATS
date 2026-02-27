@@ -1,12 +1,18 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api, type User } from '../api/client';
 
+const ROLE_HIERARCHY = ['interviewer', 'hiring_manager', 'recruiter', 'admin', 'super_admin'] as const;
+export type Role = typeof ROLE_HIERARCHY[number];
+
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (data: { email: string; name: string; password: string; orgName: string; orgSlug: string }) => Promise<void>;
   logout: () => Promise<void>;
+  setUser: (user: User | null) => void;
+  isAtLeast: (role: Role) => boolean;
+  hasRole: (...roles: Role[]) => boolean;
 }
 
 export const AuthContext = createContext<AuthContextType>({
@@ -15,6 +21,9 @@ export const AuthContext = createContext<AuthContextType>({
   login: async () => {},
   signup: async () => {},
   logout: async () => {},
+  setUser: () => {},
+  isAtLeast: () => false,
+  hasRole: () => false,
 });
 
 export function useAuth() {
@@ -47,5 +56,17 @@ export function useAuthProvider(): AuthContextType {
     setUser(null);
   }, []);
 
-  return { user, loading, login, signup, logout };
+  const isAtLeast = useCallback((role: Role): boolean => {
+    if (!user) return false;
+    const userLevel = ROLE_HIERARCHY.indexOf(user.role as Role);
+    const requiredLevel = ROLE_HIERARCHY.indexOf(role);
+    return userLevel >= requiredLevel;
+  }, [user]);
+
+  const hasRole = useCallback((...roles: Role[]): boolean => {
+    if (!user) return false;
+    return roles.includes(user.role as Role);
+  }, [user]);
+
+  return { user, loading, login, signup, logout, setUser, isAtLeast, hasRole };
 }

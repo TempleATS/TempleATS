@@ -1,5 +1,6 @@
 import { useDroppable } from '@dnd-kit/core';
 import ApplicationCard from './ApplicationCard';
+import { STAGE_LABELS } from './KanbanBoard';
 import type { PipelineApplication } from '../../api/client';
 
 interface Props {
@@ -21,7 +22,7 @@ export default function KanbanColumn({ stage, color, applications, onCardClick }
     >
       <div className="p-3 border-b bg-white rounded-t-lg">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-gray-700 capitalize">{stage}</h3>
+          <h3 className="text-sm font-semibold text-gray-700">{STAGE_LABELS[stage] || stage}</h3>
           <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
             {applications.length}
           </span>

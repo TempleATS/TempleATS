@@ -11,29 +11,57 @@ import (
 )
 
 type createReqRequest struct {
-	Title      string  `json:"title"`
-	Level      *string `json:"level"`
-	Department *string `json:"department"`
-	TargetHires *int32 `json:"targetHires"`
+	Title           string  `json:"title"`
+	JobCode         *string `json:"jobCode"`
+	Level           *string `json:"level"`
+	Department      *string `json:"department"`
+	TargetHires     *int32  `json:"targetHires"`
+	HiringManagerID *string `json:"hiringManagerId"`
+	RecruiterID     *string `json:"recruiterId"`
 }
 
 type updateReqRequest struct {
-	Title        string  `json:"title"`
-	Level        *string `json:"level"`
-	Department   *string `json:"department"`
-	TargetHires  *int32  `json:"targetHires"`
-	Status       string  `json:"status"`
+	Title           string  `json:"title"`
+	JobCode         *string `json:"jobCode"`
+	Level           *string `json:"level"`
+	Department      *string `json:"department"`
+	TargetHires     *int32  `json:"targetHires"`
+	Status          string  `json:"status"`
+	HiringManagerID *string `json:"hiringManagerId"`
+	RecruiterID     *string `json:"recruiterId"`
 }
 
 type attachJobRequest struct {
 	JobID string `json:"jobId"`
 }
 
-// ListRequisitions returns all requisitions for the current org.
+// ListRequisitions returns requisitions for the current org, filtered by role.
 func (s *Server) ListRequisitions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	orgID := mw.GetOrgID(ctx)
+	userID := mw.GetUserID(ctx)
+	role := mw.GetRole(ctx)
 
+	// Interviewers don't see requisitions
+	if role == "interviewer" {
+		writeJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+
+	if role == "hiring_manager" {
+		reqs, err := s.Queries.ListRequisitionsByHiringManager(ctx, db.ListRequisitionsByHiringManagerParams{
+			OrganizationID:  orgID,
+			HiringManagerID: pgtype.Text{String: userID, Valid: true},
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list requisitions"})
+			return
+		}
+		writeJSON(w, http.StatusOK, reqs)
+		return
+	}
+
+	// super_admin, admin: see all
 	reqs, err := s.Queries.ListRequisitionsByOrg(ctx, orgID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list requisitions"})
@@ -65,7 +93,10 @@ func (s *Server) CreateRequisition(w http.ResponseWriter, r *http.Request) {
 		targetHires = *req.TargetHires
 	}
 
-	var level, department pgtype.Text
+	var jobCode, level, department pgtype.Text
+	if req.JobCode != nil {
+		jobCode = pgtype.Text{String: *req.JobCode, Valid: true}
+	}
 	if req.Level != nil {
 		level = pgtype.Text{String: *req.Level, Valid: true}
 	}
@@ -73,12 +104,24 @@ func (s *Server) CreateRequisition(w http.ResponseWriter, r *http.Request) {
 		department = pgtype.Text{String: *req.Department, Valid: true}
 	}
 
+	hmID := userID
+	if req.HiringManagerID != nil && *req.HiringManagerID != "" {
+		hmID = *req.HiringManagerID
+	}
+
+	var recruiterID pgtype.Text
+	if req.RecruiterID != nil && *req.RecruiterID != "" {
+		recruiterID = pgtype.Text{String: *req.RecruiterID, Valid: true}
+	}
+
 	result, err := s.Queries.CreateRequisition(ctx, db.CreateRequisitionParams{
 		Title:            req.Title,
+		JobCode:          jobCode,
 		Level:            level,
 		Department:       department,
 		TargetHires:      targetHires,
-		HiringManagerID:  pgtype.Text{String: userID, Valid: true},
+		HiringManagerID:  pgtype.Text{String: hmID, Valid: true},
+		RecruiterID:      recruiterID,
 		OrganizationID:   orgID,
 	})
 	if err != nil {
@@ -136,7 +179,10 @@ func (s *Server) UpdateRequisition(w http.ResponseWriter, r *http.Request) {
 		targetHires = *req.TargetHires
 	}
 
-	var level, department pgtype.Text
+	var jobCode, level, department pgtype.Text
+	if req.JobCode != nil {
+		jobCode = pgtype.Text{String: *req.JobCode, Valid: true}
+	}
 	if req.Level != nil {
 		level = pgtype.Text{String: *req.Level, Valid: true}
 	}
@@ -154,14 +200,41 @@ func (s *Server) UpdateRequisition(w http.ResponseWriter, r *http.Request) {
 		closedAt = pgtype.Timestamptz{Valid: true}
 	}
 
+	// Fetch existing to preserve current values when not provided
+	existing, _ := s.Queries.GetRequisitionByID(ctx, db.GetRequisitionByIDParams{
+		ID:             reqID,
+		OrganizationID: orgID,
+	})
+
+	// Resolve hiring manager ID: use provided value, or keep existing
+	var hmID pgtype.Text
+	if req.HiringManagerID != nil && *req.HiringManagerID != "" {
+		hmID = pgtype.Text{String: *req.HiringManagerID, Valid: true}
+	} else {
+		hmID = existing.HiringManagerID
+	}
+
+	// Resolve recruiter ID: use provided value, or keep existing
+	var recruiterID pgtype.Text
+	if req.RecruiterID != nil && *req.RecruiterID != "" {
+		recruiterID = pgtype.Text{String: *req.RecruiterID, Valid: true}
+	} else if req.RecruiterID != nil && *req.RecruiterID == "" {
+		// Explicitly unset
+		recruiterID = pgtype.Text{}
+	} else {
+		recruiterID = existing.RecruiterID
+	}
+
 	result, err := s.Queries.UpdateRequisition(ctx, db.UpdateRequisitionParams{
 		ID:              reqID,
 		Title:           req.Title,
+		JobCode:         jobCode,
 		Level:           level,
 		Department:      department,
 		TargetHires:     targetHires,
 		Status:          status,
-		HiringManagerID: pgtype.Text{}, // keep existing
+		HiringManagerID: hmID,
+		RecruiterID:     recruiterID,
 		ClosedAt:        closedAt,
 		OrganizationID:  orgID,
 	})
@@ -206,15 +279,19 @@ func (s *Server) AttachJobToRequisition(w http.ResponseWriter, r *http.Request) 
 	}
 
 	result, err := s.Queries.UpdateJob(ctx, db.UpdateJobParams{
-		ID:             job.ID,
-		Title:          job.Title,
-		Description:    job.Description,
-		Location:       job.Location,
-		Department:     job.Department,
-		Salary:         job.Salary,
-		Status:         job.Status,
-		RequisitionID:  pgtype.Text{String: reqID, Valid: true},
-		OrganizationID: orgID,
+		ID:               job.ID,
+		Title:            job.Title,
+		CompanyBlurb:     job.CompanyBlurb,
+		TeamDetails:      job.TeamDetails,
+		Responsibilities: job.Responsibilities,
+		Qualifications:   job.Qualifications,
+		ClosingStatement: job.ClosingStatement,
+		Location:         job.Location,
+		Department:       job.Department,
+		Salary:           job.Salary,
+		Status:           job.Status,
+		RequisitionID:    pgtype.Text{String: reqID, Valid: true},
+		OrganizationID:   orgID,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to attach job"})
@@ -222,4 +299,47 @@ func (s *Server) AttachJobToRequisition(w http.ResponseWriter, r *http.Request) 
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+// DeleteRequisition deletes a requisition. Jobs linked to it are unlinked first.
+func (s *Server) DeleteRequisition(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	orgID := mw.GetOrgID(ctx)
+	reqID := chi.URLParam(r, "reqId")
+
+	// Unlink any jobs attached to this req
+	jobs, err := s.Queries.ListJobsByRequisition(ctx, db.ListJobsByRequisitionParams{
+		RequisitionID:  pgtype.Text{String: reqID, Valid: true},
+		OrganizationID: orgID,
+	})
+	if err == nil {
+		for _, job := range jobs {
+			s.Queries.UpdateJob(ctx, db.UpdateJobParams{
+				ID:               job.ID,
+				Title:            job.Title,
+				CompanyBlurb:     job.CompanyBlurb,
+				TeamDetails:      job.TeamDetails,
+				Responsibilities: job.Responsibilities,
+				Qualifications:   job.Qualifications,
+				ClosingStatement: job.ClosingStatement,
+				Location:         job.Location,
+				Department:       job.Department,
+				Salary:           job.Salary,
+				Status:           job.Status,
+				RequisitionID:    pgtype.Text{}, // unlink
+				OrganizationID:   orgID,
+			})
+		}
+	}
+
+	err = s.Queries.DeleteRequisition(ctx, db.DeleteRequisitionParams{
+		ID:             reqID,
+		OrganizationID: orgID,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "requisition not found"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }

@@ -91,7 +91,7 @@ func (q *Queries) CountApplicationsByJobAndStage(ctx context.Context, jobID stri
 const createApplication = `-- name: CreateApplication :one
 INSERT INTO applications (stage, candidate_id, job_id)
 VALUES ('applied', $1, $2)
-RETURNING id, stage, rejection_reason, rejection_notes, candidate_id, job_id, created_at, updated_at
+RETURNING id, stage, rejection_reason, rejection_notes, candidate_id, job_id, created_at, updated_at, referral_id
 `
 
 type CreateApplicationParams struct {
@@ -111,8 +111,47 @@ func (q *Queries) CreateApplication(ctx context.Context, arg CreateApplicationPa
 		&i.JobID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ReferralID,
 	)
 	return i, err
+}
+
+const createApplicationWithReferral = `-- name: CreateApplicationWithReferral :one
+INSERT INTO applications (stage, candidate_id, job_id, referral_id)
+VALUES ('applied', $1, $2, $3)
+RETURNING id, stage, rejection_reason, rejection_notes, candidate_id, job_id, created_at, updated_at, referral_id
+`
+
+type CreateApplicationWithReferralParams struct {
+	CandidateID string `json:"candidate_id"`
+	JobID       string `json:"job_id"`
+	ReferralID  string `json:"referral_id"`
+}
+
+func (q *Queries) CreateApplicationWithReferral(ctx context.Context, arg CreateApplicationWithReferralParams) (Application, error) {
+	row := q.db.QueryRow(ctx, createApplicationWithReferral, arg.CandidateID, arg.JobID, arg.ReferralID)
+	var i Application
+	err := row.Scan(
+		&i.ID,
+		&i.Stage,
+		&i.RejectionReason,
+		&i.RejectionNotes,
+		&i.CandidateID,
+		&i.JobID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ReferralID,
+	)
+	return i, err
+}
+
+const setApplicationReferral = `-- name: SetApplicationReferral :exec
+UPDATE applications SET referral_id = $2 WHERE id = $1
+`
+
+func (q *Queries) SetApplicationReferral(ctx context.Context, id string, referralID string) error {
+	_, err := q.db.Exec(ctx, setApplicationReferral, id, referralID)
+	return err
 }
 
 const funnelByRequisition = `-- name: FunnelByRequisition :many
@@ -149,7 +188,7 @@ func (q *Queries) FunnelByRequisition(ctx context.Context, requisitionID pgtype.
 }
 
 const getApplicationByID = `-- name: GetApplicationByID :one
-SELECT id, stage, rejection_reason, rejection_notes, candidate_id, job_id, created_at, updated_at FROM applications WHERE id = $1
+SELECT id, stage, rejection_reason, rejection_notes, candidate_id, job_id, created_at, updated_at, referral_id FROM applications WHERE id = $1
 `
 
 func (q *Queries) GetApplicationByID(ctx context.Context, id string) (Application, error) {
@@ -164,35 +203,49 @@ func (q *Queries) GetApplicationByID(ctx context.Context, id string) (Applicatio
 		&i.JobID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ReferralID,
 	)
 	return i, err
 }
 
 const getApplicationWithDetails = `-- name: GetApplicationWithDetails :one
 SELECT a.id, a.stage, a.rejection_reason, a.rejection_notes, a.candidate_id, a.job_id, a.created_at, a.updated_at,
+       a.referral_id,
        c.name AS candidate_name, c.email AS candidate_email, c.phone AS candidate_phone,
-       c.resume_url AS candidate_resume_url,
-       j.title AS job_title
+       c.resume_url AS candidate_resume_url, c.company AS candidate_company, c.linkedin_url AS candidate_linkedin_url,
+       j.title AS job_title, j.location AS job_location, j.department AS job_department,
+       o.name AS org_name,
+       ru.name AS referred_by_name
 FROM applications a
 JOIN candidates c ON a.candidate_id = c.id
 JOIN jobs j ON a.job_id = j.id
+JOIN organizations o ON j.organization_id = o.id
+LEFT JOIN referrals ref ON a.referral_id = ref.id
+LEFT JOIN users ru ON ref.referrer_id = ru.id
 WHERE a.id = $1
 `
 
 type GetApplicationWithDetailsRow struct {
-	ID                 string             `json:"id"`
-	Stage              string             `json:"stage"`
-	RejectionReason    pgtype.Text        `json:"rejection_reason"`
-	RejectionNotes     pgtype.Text        `json:"rejection_notes"`
-	CandidateID        string             `json:"candidate_id"`
-	JobID              string             `json:"job_id"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
-	CandidateName      string             `json:"candidate_name"`
-	CandidateEmail     string             `json:"candidate_email"`
-	CandidatePhone     pgtype.Text        `json:"candidate_phone"`
-	CandidateResumeUrl pgtype.Text        `json:"candidate_resume_url"`
-	JobTitle           string             `json:"job_title"`
+	ID                    string             `json:"id"`
+	Stage                 string             `json:"stage"`
+	RejectionReason       pgtype.Text        `json:"rejection_reason"`
+	RejectionNotes        pgtype.Text        `json:"rejection_notes"`
+	CandidateID           string             `json:"candidate_id"`
+	JobID                 string             `json:"job_id"`
+	CreatedAt             pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt             pgtype.Timestamptz `json:"updated_at"`
+	ReferralID            pgtype.Text        `json:"referral_id"`
+	CandidateName         string             `json:"candidate_name"`
+	CandidateEmail        string             `json:"candidate_email"`
+	CandidatePhone        pgtype.Text        `json:"candidate_phone"`
+	CandidateResumeUrl    pgtype.Text        `json:"candidate_resume_url"`
+	CandidateCompany      pgtype.Text        `json:"candidate_company"`
+	CandidateLinkedinUrl  pgtype.Text        `json:"candidate_linkedin_url"`
+	JobTitle              string             `json:"job_title"`
+	JobLocation           pgtype.Text        `json:"job_location"`
+	JobDepartment         pgtype.Text        `json:"job_department"`
+	OrgName               string             `json:"org_name"`
+	ReferredByName        pgtype.Text        `json:"referred_by_name"`
 }
 
 func (q *Queries) GetApplicationWithDetails(ctx context.Context, id string) (GetApplicationWithDetailsRow, error) {
@@ -207,11 +260,18 @@ func (q *Queries) GetApplicationWithDetails(ctx context.Context, id string) (Get
 		&i.JobID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ReferralID,
 		&i.CandidateName,
 		&i.CandidateEmail,
 		&i.CandidatePhone,
 		&i.CandidateResumeUrl,
+		&i.CandidateCompany,
+		&i.CandidateLinkedinUrl,
 		&i.JobTitle,
+		&i.JobLocation,
+		&i.JobDepartment,
+		&i.OrgName,
+		&i.ReferredByName,
 	)
 	return i, err
 }
@@ -271,7 +331,7 @@ func (q *Queries) ListApplicationsByCandidate(ctx context.Context, candidateID s
 const listApplicationsByJob = `-- name: ListApplicationsByJob :many
 SELECT a.id, a.stage, a.rejection_reason, a.rejection_notes, a.candidate_id, a.job_id, a.created_at, a.updated_at,
        c.name AS candidate_name, c.email AS candidate_email,
-       c.resume_url AS candidate_resume_url
+       c.resume_url AS candidate_resume_url, c.company AS candidate_company
 FROM applications a
 JOIN candidates c ON a.candidate_id = c.id
 WHERE a.job_id = $1
@@ -290,6 +350,7 @@ type ListApplicationsByJobRow struct {
 	CandidateName      string             `json:"candidate_name"`
 	CandidateEmail     string             `json:"candidate_email"`
 	CandidateResumeUrl pgtype.Text        `json:"candidate_resume_url"`
+	CandidateCompany   pgtype.Text        `json:"candidate_company"`
 }
 
 func (q *Queries) ListApplicationsByJob(ctx context.Context, jobID string) ([]ListApplicationsByJobRow, error) {
@@ -313,6 +374,71 @@ func (q *Queries) ListApplicationsByJob(ctx context.Context, jobID string) ([]Li
 			&i.CandidateName,
 			&i.CandidateEmail,
 			&i.CandidateResumeUrl,
+			&i.CandidateCompany,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listApplicationsByJobForInterviewer = `-- name: ListApplicationsByJobForInterviewer :many
+SELECT a.id, a.stage, a.rejection_reason, a.rejection_notes, a.candidate_id, a.job_id, a.created_at, a.updated_at,
+       c.name AS candidate_name, c.email AS candidate_email,
+       c.resume_url AS candidate_resume_url, c.company AS candidate_company
+FROM applications a
+JOIN candidates c ON a.candidate_id = c.id
+JOIN interview_assignments ia ON ia.application_id = a.id
+WHERE a.job_id = $1 AND ia.interviewer_id = $2
+ORDER BY a.created_at DESC
+`
+
+type ListApplicationsByJobForInterviewerParams struct {
+	JobID         string `json:"job_id"`
+	InterviewerID string `json:"interviewer_id"`
+}
+
+type ListApplicationsByJobForInterviewerRow struct {
+	ID                 string             `json:"id"`
+	Stage              string             `json:"stage"`
+	RejectionReason    pgtype.Text        `json:"rejection_reason"`
+	RejectionNotes     pgtype.Text        `json:"rejection_notes"`
+	CandidateID        string             `json:"candidate_id"`
+	JobID              string             `json:"job_id"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	CandidateName      string             `json:"candidate_name"`
+	CandidateEmail     string             `json:"candidate_email"`
+	CandidateResumeUrl pgtype.Text        `json:"candidate_resume_url"`
+	CandidateCompany   pgtype.Text        `json:"candidate_company"`
+}
+
+func (q *Queries) ListApplicationsByJobForInterviewer(ctx context.Context, arg ListApplicationsByJobForInterviewerParams) ([]ListApplicationsByJobForInterviewerRow, error) {
+	rows, err := q.db.Query(ctx, listApplicationsByJobForInterviewer, arg.JobID, arg.InterviewerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListApplicationsByJobForInterviewerRow{}
+	for rows.Next() {
+		var i ListApplicationsByJobForInterviewerRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Stage,
+			&i.RejectionReason,
+			&i.RejectionNotes,
+			&i.CandidateID,
+			&i.JobID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CandidateName,
+			&i.CandidateEmail,
+			&i.CandidateResumeUrl,
+			&i.CandidateCompany,
 		); err != nil {
 			return nil, err
 		}
@@ -361,7 +487,7 @@ const updateApplicationStage = `-- name: UpdateApplicationStage :one
 UPDATE applications
 SET stage = $2, rejection_reason = $3, rejection_notes = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, stage, rejection_reason, rejection_notes, candidate_id, job_id, created_at, updated_at
+RETURNING id, stage, rejection_reason, rejection_notes, candidate_id, job_id, created_at, updated_at, referral_id
 `
 
 type UpdateApplicationStageParams struct {
@@ -388,6 +514,7 @@ func (q *Queries) UpdateApplicationStage(ctx context.Context, arg UpdateApplicat
 		&i.JobID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ReferralID,
 	)
 	return i, err
 }

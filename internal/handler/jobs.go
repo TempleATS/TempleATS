@@ -11,37 +11,69 @@ import (
 )
 
 type createJobRequest struct {
-	Title         string  `json:"title"`
-	Description   string  `json:"description"`
-	Location      *string `json:"location"`
-	Department    *string `json:"department"`
-	Salary        *string `json:"salary"`
-	Status        string  `json:"status"`
-	RequisitionID *string `json:"requisitionId"`
+	Title            string  `json:"title"`
+	CompanyBlurb     string  `json:"companyBlurb"`
+	TeamDetails      string  `json:"teamDetails"`
+	Responsibilities string  `json:"responsibilities"`
+	Qualifications   string  `json:"qualifications"`
+	ClosingStatement string  `json:"closingStatement"`
+	Location         *string `json:"location"`
+	Department       *string `json:"department"`
+	Salary           *string `json:"salary"`
+	Status           string  `json:"status"`
+	RequisitionID    *string `json:"requisitionId"`
 }
 
 type updateJobRequest struct {
-	Title         string  `json:"title"`
-	Description   string  `json:"description"`
-	Location      *string `json:"location"`
-	Department    *string `json:"department"`
-	Salary        *string `json:"salary"`
-	Status        string  `json:"status"`
-	RequisitionID *string `json:"requisitionId"`
+	Title            string  `json:"title"`
+	CompanyBlurb     string  `json:"companyBlurb"`
+	TeamDetails      string  `json:"teamDetails"`
+	Responsibilities string  `json:"responsibilities"`
+	Qualifications   string  `json:"qualifications"`
+	ClosingStatement string  `json:"closingStatement"`
+	Location         *string `json:"location"`
+	Department       *string `json:"department"`
+	Salary           *string `json:"salary"`
+	Status           string  `json:"status"`
+	RequisitionID    *string `json:"requisitionId"`
 }
 
-// ListJobs returns all jobs for the current org.
+// ListJobs returns jobs for the current org, filtered by role.
 func (s *Server) ListJobs(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	orgID := mw.GetOrgID(ctx)
+	userID := mw.GetUserID(ctx)
+	role := mw.GetRole(ctx)
 
-	jobs, err := s.Queries.ListJobsByOrg(ctx, orgID)
-	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list jobs"})
-		return
+	switch role {
+	case "hiring_manager":
+		jobs, err := s.Queries.ListJobsByHiringManager(ctx, db.ListJobsByHiringManagerParams{
+			OrganizationID: orgID,
+			HiringManagerID: pgtype.Text{String: userID, Valid: true},
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list jobs"})
+			return
+		}
+		writeJSON(w, http.StatusOK, jobs)
+	case "interviewer":
+		jobs, err := s.Queries.ListJobsByInterviewer(ctx, db.ListJobsByInterviewerParams{
+			OrganizationID: orgID,
+			InterviewerID:  userID,
+		})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list jobs"})
+			return
+		}
+		writeJSON(w, http.StatusOK, jobs)
+	default: // super_admin, admin
+		jobs, err := s.Queries.ListJobsByOrg(ctx, orgID)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list jobs"})
+			return
+		}
+		writeJSON(w, http.StatusOK, jobs)
 	}
-
-	writeJSON(w, http.StatusOK, jobs)
 }
 
 // CreateJob creates a new job posting.
@@ -52,8 +84,8 @@ func (s *Server) CreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Title == "" || req.Description == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title and description are required"})
+	if req.Title == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "title is required"})
 		return
 	}
 
@@ -80,14 +112,18 @@ func (s *Server) CreateJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, err := s.Queries.CreateJob(ctx, db.CreateJobParams{
-		Title:          req.Title,
-		Description:    req.Description,
-		Location:       location,
-		Department:     department,
-		Salary:         salary,
-		Status:         status,
-		RequisitionID:  reqID,
-		OrganizationID: orgID,
+		Title:            req.Title,
+		CompanyBlurb:     req.CompanyBlurb,
+		TeamDetails:      req.TeamDetails,
+		Responsibilities: req.Responsibilities,
+		Qualifications:   req.Qualifications,
+		ClosingStatement: req.ClosingStatement,
+		Location:         location,
+		Department:       department,
+		Salary:           salary,
+		Status:           status,
+		RequisitionID:    reqID,
+		OrganizationID:   orgID,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create job"})
@@ -147,15 +183,19 @@ func (s *Server) UpdateJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, err := s.Queries.UpdateJob(ctx, db.UpdateJobParams{
-		ID:             jobID,
-		Title:          req.Title,
-		Description:    req.Description,
-		Location:       location,
-		Department:     department,
-		Salary:         salary,
-		Status:         status,
-		RequisitionID:  reqID,
-		OrganizationID: orgID,
+		ID:               jobID,
+		Title:            req.Title,
+		CompanyBlurb:     req.CompanyBlurb,
+		TeamDetails:      req.TeamDetails,
+		Responsibilities: req.Responsibilities,
+		Qualifications:   req.Qualifications,
+		ClosingStatement: req.ClosingStatement,
+		Location:         location,
+		Department:       department,
+		Salary:           salary,
+		Status:           status,
+		RequisitionID:    reqID,
+		OrganizationID:   orgID,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "job not found"})

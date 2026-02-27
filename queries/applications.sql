@@ -10,10 +10,12 @@ SELECT * FROM applications WHERE id = $1;
 SELECT a.*,
        c.name AS candidate_name, c.email AS candidate_email, c.phone AS candidate_phone,
        c.resume_url AS candidate_resume_url,
-       j.title AS job_title
+       j.title AS job_title, j.location AS job_location, j.department AS job_department,
+       o.name AS org_name
 FROM applications a
 JOIN candidates c ON a.candidate_id = c.id
 JOIN jobs j ON a.job_id = j.id
+JOIN organizations o ON j.organization_id = o.id
 WHERE a.id = $1;
 
 -- name: ListApplicationsByJob :many
@@ -30,6 +32,16 @@ SELECT a.*, j.title AS job_title, j.status AS job_status
 FROM applications a
 JOIN jobs j ON a.job_id = j.id
 WHERE a.candidate_id = $1
+ORDER BY a.created_at DESC;
+
+-- name: ListApplicationsByJobForInterviewer :many
+SELECT a.*,
+       c.name AS candidate_name, c.email AS candidate_email,
+       c.resume_url AS candidate_resume_url
+FROM applications a
+JOIN candidates c ON a.candidate_id = c.id
+JOIN interview_assignments ia ON ia.application_id = a.id
+WHERE a.job_id = $1 AND ia.interviewer_id = $2
 ORDER BY a.created_at DESC;
 
 -- name: UpdateApplicationStage :one

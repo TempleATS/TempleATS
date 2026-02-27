@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -73,6 +74,7 @@ func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusConflict, map[string]string{"error": "organization slug already taken"})
 			return
 		}
+		log.Printf("ERROR creating organization: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to create organization"})
 		return
 	}
@@ -87,7 +89,7 @@ func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
 		Email:          req.Email,
 		Name:           req.Name,
 		PasswordHash:   string(hash),
-		Role:           "admin",
+		Role:           "super_admin",
 		OrganizationID: org.ID,
 	})
 	if err != nil {

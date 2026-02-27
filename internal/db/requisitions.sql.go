@@ -24,39 +24,59 @@ func (q *Queries) CountHiredByRequisition(ctx context.Context, requisitionID pgt
 	return count, err
 }
 
+const deleteRequisition = `-- name: DeleteRequisition :exec
+DELETE FROM requisitions WHERE id = $1 AND organization_id = $2
+`
+
+type DeleteRequisitionParams struct {
+	ID             string `json:"id"`
+	OrganizationID string `json:"organization_id"`
+}
+
+func (q *Queries) DeleteRequisition(ctx context.Context, arg DeleteRequisitionParams) error {
+	_, err := q.db.Exec(ctx, deleteRequisition, arg.ID, arg.OrganizationID)
+	return err
+}
+
 const createRequisition = `-- name: CreateRequisition :one
-INSERT INTO requisitions (title, level, department, target_hires, hiring_manager_id, organization_id)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, title, level, department, target_hires, status, hiring_manager_id, organization_id, opened_at, closed_at, created_at, updated_at
+INSERT INTO requisitions (title, job_code, level, department, target_hires, hiring_manager_id, recruiter_id, organization_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, title, job_code, level, department, target_hires, status, hiring_manager_id, recruiter_id, organization_id, opened_at, closed_at, created_at, updated_at
 `
 
 type CreateRequisitionParams struct {
 	Title           string      `json:"title"`
+	JobCode         pgtype.Text `json:"job_code"`
 	Level           pgtype.Text `json:"level"`
 	Department      pgtype.Text `json:"department"`
 	TargetHires     int32       `json:"target_hires"`
 	HiringManagerID pgtype.Text `json:"hiring_manager_id"`
+	RecruiterID     pgtype.Text `json:"recruiter_id"`
 	OrganizationID  string      `json:"organization_id"`
 }
 
 func (q *Queries) CreateRequisition(ctx context.Context, arg CreateRequisitionParams) (Requisition, error) {
 	row := q.db.QueryRow(ctx, createRequisition,
 		arg.Title,
+		arg.JobCode,
 		arg.Level,
 		arg.Department,
 		arg.TargetHires,
 		arg.HiringManagerID,
+		arg.RecruiterID,
 		arg.OrganizationID,
 	)
 	var i Requisition
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
+		&i.JobCode,
 		&i.Level,
 		&i.Department,
 		&i.TargetHires,
 		&i.Status,
 		&i.HiringManagerID,
+		&i.RecruiterID,
 		&i.OrganizationID,
 		&i.OpenedAt,
 		&i.ClosedAt,
@@ -67,7 +87,7 @@ func (q *Queries) CreateRequisition(ctx context.Context, arg CreateRequisitionPa
 }
 
 const getRequisitionByID = `-- name: GetRequisitionByID :one
-SELECT id, title, level, department, target_hires, status, hiring_manager_id, organization_id, opened_at, closed_at, created_at, updated_at FROM requisitions WHERE id = $1 AND organization_id = $2
+SELECT id, title, job_code, level, department, target_hires, status, hiring_manager_id, recruiter_id, organization_id, opened_at, closed_at, created_at, updated_at FROM requisitions WHERE id = $1 AND organization_id = $2
 `
 
 type GetRequisitionByIDParams struct {
@@ -81,11 +101,13 @@ func (q *Queries) GetRequisitionByID(ctx context.Context, arg GetRequisitionByID
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
+		&i.JobCode,
 		&i.Level,
 		&i.Department,
 		&i.TargetHires,
 		&i.Status,
 		&i.HiringManagerID,
+		&i.RecruiterID,
 		&i.OrganizationID,
 		&i.OpenedAt,
 		&i.ClosedAt,
@@ -95,8 +117,54 @@ func (q *Queries) GetRequisitionByID(ctx context.Context, arg GetRequisitionByID
 	return i, err
 }
 
+const listRequisitionsByHiringManager = `-- name: ListRequisitionsByHiringManager :many
+SELECT id, title, job_code, level, department, target_hires, status, hiring_manager_id, recruiter_id, organization_id, opened_at, closed_at, created_at, updated_at FROM requisitions
+WHERE organization_id = $1 AND hiring_manager_id = $2
+ORDER BY created_at DESC
+`
+
+type ListRequisitionsByHiringManagerParams struct {
+	OrganizationID  string      `json:"organization_id"`
+	HiringManagerID pgtype.Text `json:"hiring_manager_id"`
+}
+
+func (q *Queries) ListRequisitionsByHiringManager(ctx context.Context, arg ListRequisitionsByHiringManagerParams) ([]Requisition, error) {
+	rows, err := q.db.Query(ctx, listRequisitionsByHiringManager, arg.OrganizationID, arg.HiringManagerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Requisition{}
+	for rows.Next() {
+		var i Requisition
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.JobCode,
+			&i.Level,
+			&i.Department,
+			&i.TargetHires,
+			&i.Status,
+			&i.HiringManagerID,
+			&i.RecruiterID,
+			&i.OrganizationID,
+			&i.OpenedAt,
+			&i.ClosedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRequisitionsByOrg = `-- name: ListRequisitionsByOrg :many
-SELECT id, title, level, department, target_hires, status, hiring_manager_id, organization_id, opened_at, closed_at, created_at, updated_at FROM requisitions WHERE organization_id = $1 ORDER BY created_at DESC
+SELECT id, title, job_code, level, department, target_hires, status, hiring_manager_id, recruiter_id, organization_id, opened_at, closed_at, created_at, updated_at FROM requisitions WHERE organization_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListRequisitionsByOrg(ctx context.Context, organizationID string) ([]Requisition, error) {
@@ -111,11 +179,13 @@ func (q *Queries) ListRequisitionsByOrg(ctx context.Context, organizationID stri
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
+			&i.JobCode,
 			&i.Level,
 			&i.Department,
 			&i.TargetHires,
 			&i.Status,
 			&i.HiringManagerID,
+			&i.RecruiterID,
 			&i.OrganizationID,
 			&i.OpenedAt,
 			&i.ClosedAt,
@@ -134,20 +204,22 @@ func (q *Queries) ListRequisitionsByOrg(ctx context.Context, organizationID stri
 
 const updateRequisition = `-- name: UpdateRequisition :one
 UPDATE requisitions
-SET title = $2, level = $3, department = $4, target_hires = $5,
-    status = $6, hiring_manager_id = $7, closed_at = $8, updated_at = now()
-WHERE id = $1 AND organization_id = $9
-RETURNING id, title, level, department, target_hires, status, hiring_manager_id, organization_id, opened_at, closed_at, created_at, updated_at
+SET title = $2, job_code = $3, level = $4, department = $5, target_hires = $6,
+    status = $7, hiring_manager_id = $8, recruiter_id = $9, closed_at = $10, updated_at = now()
+WHERE id = $1 AND organization_id = $11
+RETURNING id, title, job_code, level, department, target_hires, status, hiring_manager_id, recruiter_id, organization_id, opened_at, closed_at, created_at, updated_at
 `
 
 type UpdateRequisitionParams struct {
 	ID              string             `json:"id"`
 	Title           string             `json:"title"`
+	JobCode         pgtype.Text        `json:"job_code"`
 	Level           pgtype.Text        `json:"level"`
 	Department      pgtype.Text        `json:"department"`
 	TargetHires     int32              `json:"target_hires"`
 	Status          string             `json:"status"`
 	HiringManagerID pgtype.Text        `json:"hiring_manager_id"`
+	RecruiterID     pgtype.Text        `json:"recruiter_id"`
 	ClosedAt        pgtype.Timestamptz `json:"closed_at"`
 	OrganizationID  string             `json:"organization_id"`
 }
@@ -156,11 +228,13 @@ func (q *Queries) UpdateRequisition(ctx context.Context, arg UpdateRequisitionPa
 	row := q.db.QueryRow(ctx, updateRequisition,
 		arg.ID,
 		arg.Title,
+		arg.JobCode,
 		arg.Level,
 		arg.Department,
 		arg.TargetHires,
 		arg.Status,
 		arg.HiringManagerID,
+		arg.RecruiterID,
 		arg.ClosedAt,
 		arg.OrganizationID,
 	)
@@ -168,11 +242,13 @@ func (q *Queries) UpdateRequisition(ctx context.Context, arg UpdateRequisitionPa
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
+		&i.JobCode,
 		&i.Level,
 		&i.Department,
 		&i.TargetHires,
 		&i.Status,
 		&i.HiringManagerID,
+		&i.RecruiterID,
 		&i.OrganizationID,
 		&i.OpenedAt,
 		&i.ClosedAt,
