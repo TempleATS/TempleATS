@@ -170,6 +170,39 @@ make test          # all tests (requires a running PostgreSQL)
 make test-short    # unit tests only
 ```
 
+## Public Careers Page
+
+Each organization gets a public careers page at `/careers/{org-slug}` that lists all open jobs. Candidates can view job details and apply directly — no account needed.
+
+To integrate this into your company's existing website:
+
+**Direct link** — add a "View Open Positions" link pointing to your instance:
+```
+https://your-ats-domain.com/careers/your-org-slug
+```
+
+**Iframe embed** — embed the careers page inline:
+```html
+<iframe src="https://your-ats-domain.com/careers/your-org-slug"
+        width="100%" height="800" frameborder="0"></iframe>
+```
+
+**API integration** — build a fully custom UI using the public endpoints:
+```
+GET  /api/careers/{orgSlug}                    # List open jobs
+GET  /api/careers/{orgSlug}/jobs/{jobId}       # Job details
+POST /api/careers/{orgSlug}/jobs/{jobId}/apply  # Submit application
+```
+
+## Known Limitations
+
+- **No search** — no full-text or semantic search for candidates or jobs yet
+- **Local file storage** — resumes are stored on disk (`UPLOAD_DIR`); no S3/GCS support
+- **No rate limiting** — API endpoints have no request throttling
+- **No audit logging** — only stage transitions are tracked; no general audit trail
+- **Hardcoded CORS** — `localhost` origins only; update `cmd/server/main.go` for production domains
+- **No SSO** — authentication is email/password + JWT; no SAML or OIDC
+
 ## License
 
 [MIT](LICENSE)
