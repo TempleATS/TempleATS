@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -69,6 +70,7 @@ func (s *Server) UpdateOrgName(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, mw.GetUserID(ctx), "update", "organization", orgID, map[string]string{"name": req.Name})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
@@ -110,6 +112,7 @@ func (s *Server) UpdateOrgDefaults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, mw.GetUserID(ctx), "update", "settings", orgID, map[string]string{"field": "org_defaults"})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
@@ -184,6 +187,7 @@ func (s *Server) UpdateSmtpSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save SMTP settings"})
 		return
 	}
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, mw.GetUserID(r.Context()), "update", "settings", orgID, map[string]string{"field": "smtp"})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
 }
 

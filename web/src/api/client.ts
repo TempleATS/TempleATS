@@ -478,9 +478,11 @@ export const api = {
       request<User>('/auth/me'),
     acceptInvite: (data: { token: string; name: string; password: string }) =>
       request<User>('/auth/accept-invite', { method: 'POST', body: JSON.stringify(data) }),
+    ssoEnabled: () => request<{ enabled: boolean }>('/auth/sso/enabled'),
+    ssoUrl: () => request<{ url: string }>('/auth/sso/url'),
   },
   reqs: {
-    list: () => request<Requisition[]>('/reqs'),
+    list: (q?: string) => request<Requisition[]>(q ? `/reqs?q=${encodeURIComponent(q)}` : '/reqs'),
     create: (data: { title: string; jobCode?: string; level?: string; department?: string; targetHires?: number; hiringManagerId?: string; recruiterId?: string }) =>
       request<Requisition>('/reqs', { method: 'POST', body: JSON.stringify(data) }),
     get: (id: string) => request<{ requisition: Requisition; jobs: Job[] }>(`/reqs/${id}`),
@@ -505,7 +507,7 @@ export const api = {
     mine: () => request<MyInterview[]>('/my-interviews'),
   },
   jobs: {
-    list: () => request<Job[]>('/jobs'),
+    list: (q?: string) => request<Job[]>(q ? `/jobs?q=${encodeURIComponent(q)}` : '/jobs'),
     create: (data: { title: string; companyBlurb: string; teamDetails: string; responsibilities: string; qualifications: string; closingStatement: string; location?: string; department?: string; salary?: string; status?: string; requisitionId?: string }) =>
       request<Job>('/jobs', { method: 'POST', body: JSON.stringify(data) }),
     get: (id: string) => request<Job>(`/jobs/${id}`),

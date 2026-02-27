@@ -3,8 +3,10 @@ bin/
 *.exe
 *.exe~
 temple-ats
+temple-ats-linux
 templeats-*
-cmd/server/static/
+cmd/server/static/assets/
+cmd/server/static/vite.svg
 
 # React
 web/node_modules/

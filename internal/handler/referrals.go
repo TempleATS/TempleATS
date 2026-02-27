@@ -3,9 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -72,19 +70,12 @@ func (s *Server) CreateReferral(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			savedName := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-			destPath := filepath.Join(s.UploadDir, savedName)
-			dst, err := os.Create(destPath)
+			url, err := s.Storage.Save(ctx, savedName, file)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save resume"})
 				return
 			}
-			defer dst.Close()
-			if _, err := io.Copy(dst, file); err != nil {
-				os.Remove(destPath)
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save resume"})
-				return
-			}
-			resumeURL = "/uploads/" + savedName
+			resumeURL = url
 			resumeFilename = header.Filename
 		}
 	} else {

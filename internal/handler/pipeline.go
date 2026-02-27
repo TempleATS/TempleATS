@@ -201,6 +201,8 @@ func (s *Server) UpdateStage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, userID, "stage_change", "application", appID, map[string]string{"from": app.Stage, "to": req.Stage})
+
 	// Send stage change email to candidate if template exists and is enabled
 	go func() {
 		bgCtx := context.Background()

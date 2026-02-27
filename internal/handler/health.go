@@ -4,26 +4,29 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/temple-ats/TempleATS/internal/auth"
 	"github.com/temple-ats/TempleATS/internal/db"
 	"github.com/temple-ats/TempleATS/internal/email"
+	"github.com/temple-ats/TempleATS/internal/storage"
 )
 
 // Server holds shared dependencies for all handlers.
 type Server struct {
-	Pool      *pgxpool.Pool
-	Queries   *db.Queries
-	UploadDir string
-	Email     *email.Service
+	Pool    *pgxpool.Pool
+	Queries *db.Queries
+	Storage storage.Storage
+	Email   *email.Service
+	OIDC    *auth.OIDCConfig // nil if SSO is disabled
 }
 
 // NewServer creates a new Server with the given dependencies.
-func NewServer(pool *pgxpool.Pool, uploadDir string) *Server {
+func NewServer(pool *pgxpool.Pool, store storage.Storage) *Server {
 	q := db.New(pool)
 	return &Server{
-		Pool:      pool,
-		Queries:   q,
-		UploadDir: uploadDir,
-		Email:     email.NewService(q),
+		Pool:    pool,
+		Queries: q,
+		Storage: store,
+		Email:   email.NewService(q),
 	}
 }
 

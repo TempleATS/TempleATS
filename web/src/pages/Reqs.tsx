@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Requisition, type TeamMember } from '../api/client';
 import { useAuth } from '../hooks/use-auth';
@@ -9,17 +9,36 @@ export default function Reqs() {
   const [reqs, setReqs] = useState<Requisition[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const canCreate = isAtLeast('admin');
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const membersLoaded = useRef(false);
+
+  const fetchReqs = useCallback((q?: string) => {
+    setLoading(true);
+    const reqPromise = api.reqs.list(q || undefined);
+    if (!membersLoaded.current) {
+      Promise.all([reqPromise, api.team.list()]).then(([reqData, teamData]) => {
+        setReqs(reqData);
+        setMembers(teamData.members);
+        membersLoaded.current = true;
+      }).finally(() => setLoading(false));
+    } else {
+      reqPromise.then(setReqs).finally(() => setLoading(false));
+    }
+  }, []);
 
   useEffect(() => {
-    Promise.all([
-      api.reqs.list(),
-      api.team.list(),
-    ]).then(([reqData, teamData]) => {
-      setReqs(reqData);
-      setMembers(teamData.members);
-    }).finally(() => setLoading(false));
-  }, []);
+    fetchReqs();
+  }, [fetchReqs]);
+
+  const handleSearch = (value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchReqs(value);
+    }, 300);
+  };
 
   const hmName = (id: string | null) => {
     if (!id) return '-';
@@ -49,14 +68,26 @@ export default function Reqs() {
         )}
       </div>
 
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search requisitions by title, job code, department..."
+          value={search}
+          onChange={e => handleSearch(e.target.value)}
+          className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
       {loading ? (
         <p className="text-gray-500">Loading...</p>
       ) : reqs.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border">
-          <p className="text-gray-500">No requisitions yet.</p>
-          <Link to="/reqs/new" className="text-blue-600 hover:underline text-sm mt-2 inline-block">
-            Create your first requisition
-          </Link>
+          <p className="text-gray-500">{search ? 'No requisitions match your search.' : 'No requisitions yet.'}</p>
+          {!search && (
+            <Link to="/reqs/new" className="text-blue-600 hover:underline text-sm mt-2 inline-block">
+              Create your first requisition
+            </Link>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-lg border overflow-hidden">

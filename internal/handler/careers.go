@@ -3,9 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -104,22 +102,13 @@ func (s *Server) CareersApply(w http.ResponseWriter, r *http.Request) {
 			}
 
 			savedName := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-			destPath := filepath.Join(s.UploadDir, savedName)
-
-			dst, err := os.Create(destPath)
+			url, err := s.Storage.Save(r.Context(), savedName, file)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save resume"})
 				return
 			}
-			defer dst.Close()
 
-			if _, err := io.Copy(dst, file); err != nil {
-				os.Remove(destPath)
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save resume"})
-				return
-			}
-
-			req.ResumeURL = "/uploads/" + savedName
+			req.ResumeURL = url
 			req.ResumeFilename = header.Filename
 		}
 	} else {

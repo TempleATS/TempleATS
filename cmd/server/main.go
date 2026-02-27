@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -16,9 +17,11 @@ import (
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/temple-ats/TempleATS/internal/auth"
 	"github.com/temple-ats/TempleATS/internal/handler"
 	"github.com/temple-ats/TempleATS/internal/migrate"
 	mw "github.com/temple-ats/TempleATS/internal/middleware"
+	"github.com/temple-ats/TempleATS/internal/storage"
 	"github.com/temple-ats/TempleATS/migrations"
 )
 
@@ -53,22 +56,76 @@ func main() {
 		log.Fatalf("failed to run migrations: %v", err)
 	}
 
-	uploadDir := os.Getenv("UPLOAD_DIR")
-	if uploadDir == "" {
-		uploadDir = "./uploads"
-	}
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
-		log.Fatalf("failed to create upload directory: %v", err)
+	// Initialize storage (local or S3)
+	var store storage.Storage
+	switch os.Getenv("STORAGE_TYPE") {
+	case "s3":
+		s3Store, err := storage.NewS3(ctx, storage.S3Config{
+			Bucket:    os.Getenv("S3_BUCKET"),
+			Region:    os.Getenv("S3_REGION"),
+			Endpoint:  os.Getenv("S3_ENDPOINT"),
+			AccessKey: os.Getenv("S3_ACCESS_KEY"),
+			SecretKey: os.Getenv("S3_SECRET_KEY"),
+			KeyPrefix: os.Getenv("S3_KEY_PREFIX"),
+		})
+		if err != nil {
+			log.Fatalf("failed to initialize S3 storage: %v", err)
+		}
+		store = s3Store
+	default:
+		uploadDir := os.Getenv("UPLOAD_DIR")
+		if uploadDir == "" {
+			uploadDir = "./uploads"
+		}
+		localStore, err := storage.NewLocal(uploadDir, "/uploads/")
+		if err != nil {
+			log.Fatalf("failed to initialize local storage: %v", err)
+		}
+		store = localStore
 	}
 
-	srv := handler.NewServer(pool, uploadDir)
+	// Initialize OIDC for SSO (nil if SSO_ISSUER not set)
+	oidcCfg, err := auth.NewOIDCConfig(ctx)
+	if err != nil {
+		log.Fatalf("failed to initialize OIDC: %v", err)
+	}
+
+	srv := handler.NewServer(pool, store)
+	srv.OIDC = oidcCfg
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.RequestID)
+
+	// Rate limiting
+	rps := 10.0
+	burst := 20
+	if v := os.Getenv("RATE_LIMIT_RPS"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			rps = f
+		}
+	}
+	if v := os.Getenv("RATE_LIMIT_BURST"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			burst = n
+		}
+	}
+	r.Use(mw.RateLimit(rps, burst))
+
+	// CORS: read allowed origins from env, fall back to localhost for dev
+	var allowedOrigins []string
+	if corsEnv := os.Getenv("CORS_ORIGINS"); corsEnv != "" {
+		for _, o := range strings.Split(corsEnv, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				allowedOrigins = append(allowedOrigins, o)
+			}
+		}
+	} else {
+		allowedOrigins = []string{"http://localhost:5173", "http://localhost:8080"}
+	}
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:5173", "http://localhost:8080"},
+		AllowedOrigins:   allowedOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
@@ -78,11 +135,20 @@ func main() {
 	// Health check
 	r.Get("/api/health", srv.Health)
 
-	// Auth routes (public)
-	r.Post("/api/auth/signup", srv.Signup)
-	r.Post("/api/auth/login", srv.Login)
+	// Auth routes (public, stricter rate limit)
+	authLimiter := mw.RateLimit(3, 5)
+	r.Group(func(r chi.Router) {
+		r.Use(authLimiter)
+		r.Post("/api/auth/signup", srv.Signup)
+		r.Post("/api/auth/login", srv.Login)
+		r.Post("/api/auth/accept-invite", srv.AcceptInvitation)
+	})
 	r.Post("/api/auth/logout", srv.Logout)
-	r.Post("/api/auth/accept-invite", srv.AcceptInvitation)
+
+	// SSO routes (public)
+	r.Get("/api/auth/sso/enabled", srv.SSOEnabled)
+	r.Get("/api/auth/sso/url", srv.SSOAuthURL)
+	r.Get("/api/auth/sso/callback", srv.SSOCallback)
 
 	// Public careers routes (no auth)
 	r.Get("/api/careers/{orgSlug}", srv.CareersListJobs)
@@ -189,9 +255,8 @@ func main() {
 		})
 	})
 
-	// Serve uploaded files
-	uploadsFS := http.FileServer(http.Dir(uploadDir))
-	r.Handle("/uploads/*", http.StripPrefix("/uploads/", uploadsFS))
+	// Serve uploaded files (local disk or S3 presigned redirect)
+	r.Handle("/uploads/*", store.Handler())
 
 	// Serve React SPA for non-API routes
 	staticFS, err := fs.Sub(staticFiles, "static")

@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -231,4 +233,127 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	json.NewEncoder(w).Encode(v)
+}
+
+// SSOEnabled returns whether SSO is configured.
+func (s *Server) SSOEnabled(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]bool{"enabled": s.OIDC != nil})
+}
+
+// SSOAuthURL generates the OIDC authorization URL and sets a state cookie.
+func (s *Server) SSOAuthURL(w http.ResponseWriter, r *http.Request) {
+	if s.OIDC == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "SSO is not configured"})
+		return
+	}
+
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
+		return
+	}
+	state := hex.EncodeToString(b)
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "sso_state",
+		Value:    state,
+		Path:     "/",
+		MaxAge:   300, // 5 minutes
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
+	url := s.OIDC.OAuth2.AuthCodeURL(state)
+	writeJSON(w, http.StatusOK, map[string]string{"url": url})
+}
+
+// SSOCallback handles the OIDC callback, validates the token, and issues a JWT.
+func (s *Server) SSOCallback(w http.ResponseWriter, r *http.Request) {
+	if s.OIDC == nil {
+		http.Error(w, "SSO not configured", http.StatusNotFound)
+		return
+	}
+
+	// Validate state
+	stateCookie, err := r.Cookie("sso_state")
+	if err != nil || stateCookie.Value == "" {
+		http.Error(w, "missing state", http.StatusBadRequest)
+		return
+	}
+	if r.URL.Query().Get("state") != stateCookie.Value {
+		http.Error(w, "invalid state", http.StatusBadRequest)
+		return
+	}
+
+	// Clear state cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:   "sso_state",
+		Value:  "",
+		Path:   "/",
+		MaxAge: -1,
+	})
+
+	// Exchange code for token
+	code := r.URL.Query().Get("code")
+	if code == "" {
+		http.Error(w, "missing code", http.StatusBadRequest)
+		return
+	}
+
+	oauth2Token, err := s.OIDC.OAuth2.Exchange(r.Context(), code)
+	if err != nil {
+		log.Printf("[sso] token exchange failed: %v", err)
+		http.Error(w, "authentication failed", http.StatusUnauthorized)
+		return
+	}
+
+	rawIDToken, ok := oauth2Token.Extra("id_token").(string)
+	if !ok {
+		http.Error(w, "no id_token in response", http.StatusUnauthorized)
+		return
+	}
+
+	idToken, err := s.OIDC.Verifier.Verify(r.Context(), rawIDToken)
+	if err != nil {
+		log.Printf("[sso] token verification failed: %v", err)
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	var claims struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+	}
+	if err := idToken.Claims(&claims); err != nil {
+		http.Error(w, "failed to parse claims", http.StatusInternalServerError)
+		return
+	}
+
+	if claims.Email == "" {
+		http.Error(w, "email not provided by identity provider", http.StatusBadRequest)
+		return
+	}
+
+	// Look up user by email
+	user, err := s.Queries.GetUserByEmail(r.Context(), claims.Email)
+	if err != nil {
+		log.Printf("[sso] user not found for email %s: %v", claims.Email, err)
+		http.Error(w, "no account found for this email — contact your administrator", http.StatusForbidden)
+		return
+	}
+
+	org, err := s.Queries.GetOrganizationByID(r.Context(), user.OrganizationID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	token, err := auth.GenerateToken(user.ID, org.ID, org.Slug, user.Role)
+	if err != nil {
+		http.Error(w, "failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	setTokenCookie(w, token)
+	http.Redirect(w, r, "/dashboard", http.StatusTemporaryRedirect)
 }

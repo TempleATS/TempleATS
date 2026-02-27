@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -39,11 +40,45 @@ type updateJobRequest struct {
 }
 
 // ListJobs returns jobs for the current org, filtered by role.
+// Supports ?q= query parameter for full-text + fuzzy search.
 func (s *Server) ListJobs(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	orgID := mw.GetOrgID(ctx)
 	userID := mw.GetUserID(ctx)
 	role := mw.GetRole(ctx)
+	query := r.URL.Query().Get("q")
+
+	// Search mode
+	if query != "" {
+		switch role {
+		case "hiring_manager":
+			results, err := db.SearchJobsByHiringManager(ctx, s.Pool, orgID, userID, query)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "search failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, results)
+		case "interviewer":
+			// Interviewers fall back to unfiltered list (no search scoping)
+			jobs, err := s.Queries.ListJobsByInterviewer(ctx, db.ListJobsByInterviewerParams{
+				OrganizationID: orgID,
+				InterviewerID:  userID,
+			})
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to list jobs"})
+				return
+			}
+			writeJSON(w, http.StatusOK, jobs)
+		default:
+			results, err := db.SearchJobs(ctx, s.Pool, orgID, query)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "search failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, results)
+		}
+		return
+	}
 
 	switch role {
 	case "hiring_manager":
@@ -130,6 +165,7 @@ func (s *Server) CreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, mw.GetUserID(ctx), "create", "job", job.ID, map[string]string{"title": job.Title})
 	writeJSON(w, http.StatusCreated, job)
 }
 
@@ -202,5 +238,6 @@ func (s *Server) UpdateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, mw.GetUserID(ctx), "update", "job", jobID, map[string]string{"title": req.Title})
 	writeJSON(w, http.StatusOK, job)
 }

@@ -1,0 +1,15 @@
+UPDATE candidates SET company = 'Stripe', linkedin_url = 'https://linkedin.com/in/marcuschen' WHERE id = 'c0000001-0000-0000-0000-000000000001';
+UPDATE candidates SET company = 'Google', linkedin_url = 'https://linkedin.com/in/priyasharma' WHERE id = 'c0000001-0000-0000-0000-000000000002';
+UPDATE candidates SET company = 'Datadog', linkedin_url = 'https://linkedin.com/in/jordanwilliams' WHERE id = 'c0000001-0000-0000-0000-000000000003';
+UPDATE candidates SET company = 'Spotify', linkedin_url = 'https://linkedin.com/in/sofiaandersson' WHERE id = 'c0000001-0000-0000-0000-000000000004';
+UPDATE candidates SET company = 'Meta', linkedin_url = 'https://linkedin.com/in/tylerokonkwo' WHERE id = 'c0000001-0000-0000-0000-000000000005';
+UPDATE candidates SET company = 'Amazon', linkedin_url = 'https://linkedin.com/in/aishapatel' WHERE id = 'c0000001-0000-0000-0000-000000000006';
+UPDATE candidates SET company = 'Netflix', linkedin_url = 'https://linkedin.com/in/liamnakamura' WHERE id = 'c0000001-0000-0000-0000-000000000007';
+UPDATE candidates SET company = 'Latham & Watkins', linkedin_url = 'https://linkedin.com/in/elenarodriguez' WHERE id = 'c0000001-0000-0000-0000-000000000008';
+UPDATE candidates SET company = 'Kirkland & Ellis', linkedin_url = 'https://linkedin.com/in/davidosei' WHERE id = 'c0000001-0000-0000-0000-000000000009';
+UPDATE candidates SET company = 'Freshfields', linkedin_url = 'https://linkedin.com/in/hannahfischer' WHERE id = 'c0000001-0000-0000-0000-000000000010';
+UPDATE candidates SET company = 'Sullivan & Cromwell', linkedin_url = 'https://linkedin.com/in/rajkrishnamurthy' WHERE id = 'c0000001-0000-0000-0000-000000000011';
+UPDATE candidates SET company = 'Clifford Chance', linkedin_url = 'https://linkedin.com/in/camilledupont' WHERE id = 'c0000001-0000-0000-0000-000000000012';
+UPDATE candidates SET company = 'Palantir', linkedin_url = 'https://linkedin.com/in/alexkim' WHERE id = 'c0000001-0000-0000-0000-000000000013';
+UPDATE candidates SET company = 'Cloudflare', linkedin_url = 'https://linkedin.com/in/nadiavolkov' WHERE id = 'c0000001-0000-0000-0000-000000000014';
+UPDATE candidates SET company = 'Microsoft', linkedin_url = 'https://linkedin.com/in/benagyeman' WHERE id = 'c0000001-0000-0000-0000-000000000015';

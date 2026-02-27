@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -36,15 +37,37 @@ type attachJobRequest struct {
 }
 
 // ListRequisitions returns requisitions for the current org, filtered by role.
+// Supports ?q= query parameter for full-text + fuzzy search.
 func (s *Server) ListRequisitions(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	orgID := mw.GetOrgID(ctx)
 	userID := mw.GetUserID(ctx)
 	role := mw.GetRole(ctx)
+	query := r.URL.Query().Get("q")
 
 	// Interviewers don't see requisitions
 	if role == "interviewer" {
 		writeJSON(w, http.StatusOK, []interface{}{})
+		return
+	}
+
+	// Search mode
+	if query != "" {
+		if role == "hiring_manager" {
+			results, err := db.SearchRequisitionsByHiringManager(ctx, s.Pool, orgID, userID, query)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "search failed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, results)
+			return
+		}
+		results, err := db.SearchRequisitions(ctx, s.Pool, orgID, query)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "search failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, results)
 		return
 	}
 
@@ -129,6 +152,7 @@ func (s *Server) CreateRequisition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, userID, "create", "requisition", result.ID, map[string]string{"title": req.Title})
 	writeJSON(w, http.StatusCreated, result)
 }
 
@@ -243,6 +267,7 @@ func (s *Server) UpdateRequisition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, mw.GetUserID(ctx), "update", "requisition", reqID, map[string]string{"title": req.Title, "status": status})
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -341,5 +366,6 @@ func (s *Server) DeleteRequisition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, mw.GetUserID(ctx), "delete", "requisition", reqID, nil)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }

@@ -56,7 +56,11 @@ func Run(ctx context.Context, pool *pgxpool.Pool, migrations embed.FS, dir strin
 		}
 
 		// Read and execute
-		sql, err := migrations.ReadFile(dir + "/" + name)
+		path := name
+		if dir != "." && dir != "" {
+			path = dir + "/" + name
+		}
+		sql, err := migrations.ReadFile(path)
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}

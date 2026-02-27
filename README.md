@@ -194,14 +194,15 @@ GET  /api/careers/{orgSlug}/jobs/{jobId}       # Job details
 POST /api/careers/{orgSlug}/jobs/{jobId}/apply  # Submit application
 ```
 
-## Known Limitations
+## Recent Improvements
 
-- **No search** — no full-text or semantic search for candidates or jobs yet
-- **Local file storage** — resumes are stored on disk (`UPLOAD_DIR`); no S3/GCS support
-- **No rate limiting** — API endpoints have no request throttling
-- **No audit logging** — only stage transitions are tracked; no general audit trail
-- **Hardcoded CORS** — `localhost` origins only; update `cmd/server/main.go` for production domains
-- **No SSO** — authentication is email/password + JWT; no SAML or OIDC
+- **Full-text search** — jobs and requisitions searchable via PostgreSQL `tsvector` + `pg_trgm` fuzzy matching
+- **S3 file storage** — resumes can be stored on S3-compatible storage (AWS, MinIO, DO Spaces) via `STORAGE_TYPE=s3`
+- **Rate limiting** — per-IP token bucket rate limiting with configurable RPS/burst; stricter limits on auth routes
+- **Audit logging** — all mutations (create/update/delete) logged to `audit_logs` table with user, entity, and details
+- **Configurable CORS** — set `CORS_ORIGINS` env var for production domains (comma-separated)
+- **SSO via OIDC** — authenticate with any OIDC provider (Google, Okta, etc.) via `SSO_ISSUER` env vars
+- **Frontend tests** — vitest + testing-library test suite for Jobs and Requisitions pages
 
 ## License
 

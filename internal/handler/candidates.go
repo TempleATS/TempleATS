@@ -4,10 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -101,19 +99,12 @@ func (s *Server) CreateCandidate(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			savedName := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-			destPath := filepath.Join(s.UploadDir, savedName)
-			dst, err := os.Create(destPath)
+			url, err := s.Storage.Save(ctx, savedName, file)
 			if err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save resume"})
 				return
 			}
-			defer dst.Close()
-			if _, err := io.Copy(dst, file); err != nil {
-				os.Remove(destPath)
-				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save resume"})
-				return
-			}
-			resumeURL = "/uploads/" + savedName
+			resumeURL = url
 			resumeFilename = header.Filename
 		}
 	} else {
@@ -195,6 +186,8 @@ func (s *Server) CreateCandidate(w http.ResponseWriter, r *http.Request) {
 			MovedByID:     pgtype.Text{String: userID, Valid: true},
 		})
 	}
+
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, userID, "create", "candidate", candidate.ID, map[string]string{"name": name, "email": emailAddr})
 
 	resp := map[string]string{"candidateId": candidate.ID}
 	if applicationID != "" {
@@ -326,6 +319,7 @@ func (s *Server) UpdateCandidate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, mw.GetUserID(ctx), "update", "candidate", candID, map[string]string{"email": req.Email})
 	writeJSON(w, http.StatusOK, candidate)
 }
 
@@ -458,20 +452,12 @@ func (s *Server) UploadCandidateResume(w http.ResponseWriter, r *http.Request) {
 	}
 
 	savedName := fmt.Sprintf("%s%s", uuid.New().String(), ext)
-	destPath := filepath.Join(s.UploadDir, savedName)
-	dst, err := os.Create(destPath)
+	resumeURL, err := s.Storage.Save(ctx, savedName, file)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save resume"})
 		return
 	}
-	defer dst.Close()
-	if _, err := io.Copy(dst, file); err != nil {
-		os.Remove(destPath)
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to save resume"})
-		return
-	}
 
-	resumeURL := "/uploads/" + savedName
 	candidate, err := s.Queries.UpdateCandidateResume(ctx, db.UpdateCandidateResumeParams{
 		ID:             candID,
 		OrganizationID: orgID,
@@ -479,7 +465,6 @@ func (s *Server) UploadCandidateResume(w http.ResponseWriter, r *http.Request) {
 		ResumeFilename: pgtype.Text{String: header.Filename, Valid: true},
 	})
 	if err != nil {
-		os.Remove(destPath)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "failed to update candidate"})
 		return
 	}

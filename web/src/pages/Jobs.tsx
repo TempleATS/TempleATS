@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Job } from '../api/client';
 import { useAuth } from '../hooks/use-auth';
@@ -8,11 +8,26 @@ export default function Jobs() {
   const { isAtLeast } = useAuth();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const canCreate = isAtLeast('admin');
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  const fetchJobs = useCallback((q?: string) => {
+    setLoading(true);
+    api.jobs.list(q || undefined).then(setJobs).finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
-    api.jobs.list().then(setJobs).finally(() => setLoading(false));
-  }, []);
+    fetchJobs();
+  }, [fetchJobs]);
+
+  const handleSearch = (value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      fetchJobs(value);
+    }, 300);
+  };
 
   const statusColor = (status: string) => {
     switch (status) {
@@ -37,14 +52,26 @@ export default function Jobs() {
         )}
       </div>
 
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Search jobs by title, location, department..."
+          value={search}
+          onChange={e => handleSearch(e.target.value)}
+          className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
       {loading ? (
         <p className="text-gray-500">Loading...</p>
       ) : jobs.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-lg border">
-          <p className="text-gray-500">No jobs yet.</p>
-          <Link to="/jobs/new" className="text-blue-600 hover:underline text-sm mt-2 inline-block">
-            Create your first job
-          </Link>
+          <p className="text-gray-500">{search ? 'No jobs match your search.' : 'No jobs yet.'}</p>
+          {!search && (
+            <Link to="/jobs/new" className="text-blue-600 hover:underline text-sm mt-2 inline-block">
+              Create your first job
+            </Link>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-lg border overflow-hidden">

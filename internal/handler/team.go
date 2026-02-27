@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -117,6 +118,7 @@ func (s *Server) InviteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, mw.GetUserID(ctx), "create", "invitation", invitation.ID, map[string]string{"email": req.Email, "role": req.Role})
 	writeJSON(w, http.StatusCreated, invitation)
 }
 
@@ -174,6 +176,7 @@ func (s *Server) UpdateTeamMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, callerID, "update", "team_member", targetID, map[string]string{"role": req.Role})
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"id":    updated.ID,
 		"email": updated.Email,
@@ -218,6 +221,7 @@ func (s *Server) RemoveTeamMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go db.InsertAuditLog(context.Background(), s.Pool, orgID, callerID, "delete", "team_member", targetID, nil)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "removed"})
 }
 
