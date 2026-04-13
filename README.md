@@ -4,12 +4,6 @@
 >
 > Senior SWE - *"Let's lock you in a room with a computer and see how far you get"*
 
-> *"Where are you going?" asked the Cat.*
-> *"Which way should I go?" asked Alice.*
-> *"That depends on where you are going."*
-> *"I don't know."*
-> *"Then it doesn't matter which way you go."*
-
 A modern, self-hosted Applicant Tracking System built with Go and React. Manage your hiring pipeline from requisition to offer — organize candidates, schedule interviews, collaborate with your team, and publish a public careers page.
 
 ## Features
